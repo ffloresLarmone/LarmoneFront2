@@ -1,21 +1,20 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-// Importa tus vistas
-import Home from '../pages/Home.vue'
-import Login from '../pages/Login.vue'
+import ProductsPage from './pages/ProductsPage.vue'
+import ProductDetailPage from './pages/ProductDetailPage.vue'
 
-// Configura las rutas principales
 const routes = [
-  { path: '/', name: 'home', component: Home },
-  { path: '/login', name: 'login', component: Login },
-  // Puedes agregar más rutas aquí:
-  // { path: '/productos', component: () => import('../pages/ProductosList.vue') }
+  { path: '/', redirect: '/productos' },
+  { path: '/productos', name: 'products', component: ProductsPage },
+  { path: '/productos/:id', name: 'product-detail', component: ProductDetailPage, props: true },
 ]
 
-// Crea la instancia del router
 const router = createRouter({
-  history: createWebHistory(), // usa el modo de historial HTML5
+  history: createWebHistory(),
   routes,
+  scrollBehavior() {
+    return { top: 0 }
+  },
 })
 
 export default router
