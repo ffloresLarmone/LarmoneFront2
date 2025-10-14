@@ -1,43 +1,10 @@
-<template>
-  <div class="product-card h-100 d-flex flex-column" role="article">
-    <div class="product-image-wrapper" @click="goToDetail">
-      <img
-        :src="mainImage"
-        :alt="producto.nombre"
-        class="product-image"
-      />
-    </div>
-    <div class="product-body d-flex flex-column flex-grow-1">
-      <h5 class="product-title mb-1">{{ producto.nombre }}</h5>
-      <small class="text-muted">SKU: {{ producto.sku }}</small>
-      <div class="mt-2 flex-grow-1">
-        <span
-          class="badge"
-          :class="producto.activo ? 'bg-success-soft' : 'bg-secondary-soft'"
-        >
-          {{ producto.activo ? 'Disponible' : 'No disponible' }}
-        </span>
-      </div>
-      <button
-        class="btn btn-accent mt-3 w-100"
-        type="button"
-        @click="onAddToCart"
-        :disabled="cartLoading"
-      >
-        <i class="bi bi-bag-plus me-2" aria-hidden="true"></i>
-        Agregar al carrito
-      </button>
-      <p v-if="feedbackMessage" class="feedback text-center mt-2 mb-0">{{ feedbackMessage }}</p>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
-import { computed, ref, watchEffect } from 'vue'
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import type { Producto } from '../../types/api'
 import { useCartStore } from '../../stores/cart'
+import { useToast } from '../../composables/useToast'
 
 const props = defineProps<{
   producto: Producto
@@ -45,8 +12,8 @@ const props = defineProps<{
 
 const router = useRouter()
 const cartStore = useCartStore()
-const { loading: cartLoading, error } = storeToRefs(cartStore)
-const feedbackMessage = ref('')
+const { loading: cartLoading } = storeToRefs(cartStore)
+const { showToast } = useToast()
 
 const mainImage = computed(() => {
   if (!props.producto.imagenes?.length) {
@@ -61,26 +28,64 @@ function goToDetail() {
 }
 
 async function onAddToCart() {
-  feedbackMessage.value = ''
   try {
     await cartStore.addItem({
       id_variante: props.producto.id_producto,
       cantidad: 1,
+      precio_unitario: props.producto.precio ?? 0,
+      nombre: props.producto.nombre,
+      imagen: mainImage.value,
     })
-    feedbackMessage.value = 'Producto agregado correctamente'
-  } catch (e) {
-    feedbackMessage.value =
-      error.value ?? 'No pudimos agregar el producto. Inténtalo nuevamente.'
-  }
-  setTimeout(() => (feedbackMessage.value = ''), 3000)
-}
 
-watchEffect(() => {
-  if (error.value) {
-    feedbackMessage.value = error.value
+    if (cartStore.error) {
+      showToast({
+        title: 'Carrito sincronizado parcialmente',
+        message: cartStore.error,
+        variant: 'warning',
+      })
+    } else {
+      showToast({
+        title: 'Producto agregado',
+        message: `${props.producto.nombre} ya está en tu carrito.`,
+        variant: 'success',
+      })
+    }
+
+    cartStore.openDrawer()
+  } catch (error) {
+    showToast({
+      title: 'No pudimos agregarlo',
+      message:
+        cartStore.error ??
+        (error instanceof Error
+          ? error.message
+          : 'Intenta nuevamente, ocurrió un inconveniente al actualizar tu carrito.'),
+      variant: 'danger',
+    })
   }
-})
+}
 </script>
+
+<template>
+  <div class="product-card h-100 d-flex flex-column" role="article">
+    <div class="product-image-wrapper" @click="goToDetail">
+      <img :src="mainImage" :alt="producto.nombre" class="product-image" />
+    </div>
+    <div class="product-body d-flex flex-column flex-grow-1">
+      <h5 class="product-title mb-1">{{ producto.nombre }}</h5>
+      <small class="text-muted">SKU: {{ producto.sku }}</small>
+      <div class="mt-2 flex-grow-1">
+        <span class="badge" :class="producto.activo ? 'bg-success-soft' : 'bg-secondary-soft'">
+          {{ producto.activo ? 'Disponible' : 'No disponible' }}
+        </span>
+      </div>
+      <button class="btn btn-accent mt-3 w-100" type="button" @click="onAddToCart" :disabled="cartLoading">
+        <i class="bi bi-bag-plus me-2" aria-hidden="true"></i>
+        Agregar al carrito
+      </button>
+    </div>
+  </div>
+</template>
 
 <style scoped>
 .product-card {
@@ -158,10 +163,5 @@ watchEffect(() => {
 .btn-accent:disabled {
   background: linear-gradient(145deg, #d2a586, #e8c0a5);
   color: rgba(255, 255, 255, 0.85);
-}
-
-.feedback {
-  font-size: 0.85rem;
-  color: #744d39;
 }
 </style>
