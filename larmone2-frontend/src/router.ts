@@ -1,20 +1,14 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import HomePage from './pages/HomePage.vue'
+import LoginPage from './pages/LoginPage.vue'
 
-// Importa tus vistas
-import Home from '../pages/Home.vue'
-import Login from '../pages/Login.vue'
-
-// Configura las rutas principales
 const routes = [
-  { path: '/', name: 'home', component: Home },
-  { path: '/login', name: 'login', component: Login },
-  // Puedes agregar más rutas aquí:
-  // { path: '/productos', component: () => import('../pages/ProductosList.vue') }
+  { path: '/', name: 'home', component: HomePage },
+  { path: '/login', name: 'login', component: LoginPage },
 ]
 
-// Crea la instancia del router
 const router = createRouter({
-  history: createWebHistory(), // usa el modo de historial HTML5
+  history: createWebHistory(),
   routes,
 })
 
