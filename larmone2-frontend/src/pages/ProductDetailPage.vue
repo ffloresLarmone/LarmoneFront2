@@ -51,7 +51,6 @@
                 <i class="bi bi-bag-plus me-2" aria-hidden="true"></i>Agregar al carrito
               </button>
             </div>
-            <p v-if="feedbackMessage" class="feedback mt-3 mb-0">{{ feedbackMessage }}</p>
             <dl class="mt-4 product-meta">
               <div class="meta-item">
                 <dt>Identificador interno</dt>
@@ -76,6 +75,7 @@ import { storeToRefs } from 'pinia'
 import { fetchProductById } from '../services/productService'
 import type { Producto } from '../types/api'
 import { useCartStore } from '../stores/cart'
+import { useToast } from '../composables/useToast'
 
 const route = useRoute()
 const router = useRouter()
@@ -83,10 +83,9 @@ const producto = ref<Producto | null>(null)
 const selectedImage = ref('https://placehold.co/600x480/FFE5D9/663C2C?text=Sin+imagen')
 const loading = ref(false)
 const errorMessage = ref('')
-const feedbackMessage = ref('')
-
 const cartStore = useCartStore()
-const { loading: cartLoading, error } = storeToRefs(cartStore)
+const { loading: cartLoading } = storeToRefs(cartStore)
+const { showToast } = useToast()
 
 const formattedCreatedAt = computed(() => {
   if (!producto.value?.creado_en) return 'Sin registro'
@@ -125,21 +124,42 @@ async function loadProduct() {
 }
 
 async function addToCart() {
-  feedbackMessage.value = ''
   if (!producto.value) return
   try {
     await cartStore.addItem({
       id_variante: producto.value.id_producto,
       cantidad: 1,
+      precio_unitario: producto.value.precio ?? 0,
+      nombre: producto.value.nombre,
+      imagen: selectedImage.value,
     })
-    feedbackMessage.value = 'Producto agregado al carrito'
+
+    if (cartStore.error) {
+      showToast({
+        title: 'Carrito sincronizado parcialmente',
+        message: cartStore.error,
+        variant: 'warning',
+      })
+    } else {
+      showToast({
+        title: 'Producto agregado',
+        message: `${producto.value.nombre} ahora está en tu carrito.`,
+        variant: 'success',
+      })
+    }
+
+    cartStore.openDrawer()
   } catch (error) {
-    feedbackMessage.value =
-      error instanceof Error
-        ? error.message
-        : 'No pudimos agregar el producto. Intenta nuevamente.'
+    showToast({
+      title: 'No pudimos agregarlo',
+      message:
+        cartStore.error ??
+        (error instanceof Error
+          ? error.message
+          : 'Ocurrió un inconveniente al actualizar tu carrito. Intenta nuevamente.'),
+      variant: 'danger',
+    })
   }
-  setTimeout(() => (feedbackMessage.value = ''), 3500)
 }
 
 function goBack() {

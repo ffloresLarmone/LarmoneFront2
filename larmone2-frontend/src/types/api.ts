@@ -13,6 +13,7 @@ export interface Producto {
   activo: boolean
   creado_en: string
   imagenes: ImagenProducto[]
+  precio?: number
 }
 
 export interface ProductoCrear {
@@ -30,6 +31,8 @@ export interface ItemCarrito {
   id_variante: number
   cantidad: number
   precio_unitario?: number
+  nombre?: string
+  imagen?: string
 }
 
 export interface Carrito {
