@@ -38,4 +38,58 @@ textarea {
 
 .container {
   max-width: 1140px;
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+@import './styles/tokens.css';
+
+:root {
+  color: var(--neutral-900);
+  font-family: var(--font-family-base);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  background-color: var(--neutral-50);
+}
+
+body {
+  margin: 0;
+  background-color: var(--neutral-50);
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+.btn-brand {
+  background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
+  border: none;
+  color: #fff;
+}
+
+.btn-brand:hover {
+  opacity: 0.92;
+  color: #fff;
+}
+
+.badge-soft {
+  background-color: rgba(233, 30, 99, 0.12);
+  color: var(--brand-primary);
+  font-weight: 500;
+}
+
+.section-title {
+  font-size: 2rem;
+  font-weight: 600;
+}
+
+.section-subtitle {
+  color: var(--neutral-500);
+}
+
+.card-shadow {
+  box-shadow: var(--shadow-soft);
+  border: none;
+}
+
+#app {
+  min-height: 100vh;
 }

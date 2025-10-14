@@ -85,3 +85,10 @@ import { RouterLink, RouterView } from 'vue-router'
   background: rgba(255, 240, 228, 0.75);
 }
 </style>
+<script setup lang="ts">
+import AppShell from './components/templates/AppShell.vue'
+</script>
+
+<template>
+  <AppShell />
+</template>
