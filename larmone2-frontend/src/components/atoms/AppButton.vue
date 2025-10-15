@@ -18,12 +18,14 @@ const props = withDefaults(
     size?: ButtonSize
     type?: 'button' | 'submit' | 'reset'
     block?: boolean
+    disabled?: boolean
   }>(),
   {
     variant: 'primary',
     size: 'md',
     type: 'button',
     block: false,
+    disabled: false,
   },
 )
 
@@ -44,6 +46,7 @@ const variantClass = computed(() => {
 const blockClass = computed(() => (props.block ? 'w-100' : ''))
 
 const handleClick = (event: MouseEvent) => {
+  if (props.disabled) return
   emit('click', event)
 }
 </script>
@@ -53,6 +56,7 @@ const handleClick = (event: MouseEvent) => {
     :type="props.type"
     class="btn fw-semibold"
     :class="[variantClass, sizeClass, blockClass]"
+    :disabled="props.disabled"
     @click="handleClick"
   >
     <slot>{{ props.label }}</slot>

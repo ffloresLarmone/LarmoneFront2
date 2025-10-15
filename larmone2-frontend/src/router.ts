@@ -4,6 +4,10 @@ import LoginPage from './pages/LoginPage.vue'
 
 import ProductsPage from './pages/ProductsPage.vue'
 import ProductDetailPage from './pages/ProductDetailPage.vue'
+import CheckoutSummaryPage from './pages/CheckoutSummaryPage.vue'
+import CheckoutShippingPage from './pages/CheckoutShippingPage.vue'
+import CheckoutPaymentPage from './pages/CheckoutPaymentPage.vue'
+import CheckoutResultPage from './pages/CheckoutResultPage.vue'
 
 const routes = [
   { path: '/', redirect: '/productos' },
@@ -11,6 +15,15 @@ const routes = [
   { path: '/productos/:id', name: 'product-detail', component: ProductDetailPage, props: true },
   { path: '/', name: 'home', component: HomePage },
   { path: '/login', name: 'login', component: LoginPage },
+  { path: '/checkout/resumen', name: 'checkout-summary', component: CheckoutSummaryPage },
+  { path: '/checkout/envio', name: 'checkout-shipping', component: CheckoutShippingPage },
+  { path: '/checkout/pago', name: 'checkout-payment', component: CheckoutPaymentPage },
+  {
+    path: '/checkout/resultado/:status',
+    name: 'checkout-result',
+    component: CheckoutResultPage,
+    props: (route) => ({ status: route.params.status === 'success' ? 'success' : 'failure' }),
+  },
 ]
 
 const router = createRouter({

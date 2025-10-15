@@ -156,7 +156,7 @@ const handleDrawerClick = (event: MouseEvent) => {
               :disabled="!hasItems || loading"
               @click="emitEvent('checkout')"
             >
-              Ir a la pasarela de pago
+              Ir al resumen del pedido
             </button>
           </footer>
         </aside>

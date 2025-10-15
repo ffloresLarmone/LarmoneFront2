@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RouterView } from 'vue-router'
+import { RouterView, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import MainNavbar from '../organisms/MainNavbar.vue'
 import ToastContainer from '../organisms/ToastContainer.vue'
@@ -7,13 +7,16 @@ import CartDrawer from '../organisms/CartDrawer.vue'
 import CartFloatingButton from '../molecules/CartFloatingButton.vue'
 import { createToastManager, provideToast } from '../../composables/useToast'
 import { useCartStore } from '../../stores/cart'
+import { useCheckoutStore } from '../../stores/checkout'
 
 const toastManager = createToastManager()
 
 provideToast({ showToast: toastManager.showToast })
 
 const cartStore = useCartStore()
+const checkoutStore = useCheckoutStore()
 const { items, itemCount, totalAmount } = storeToRefs(cartStore)
+const router = useRouter()
 
 const handleSearch = (query: string) => {
   if (!query) {
@@ -42,10 +45,17 @@ const handleCheckout = () => {
     return
   }
 
+  checkoutStore.clear()
+  cartStore.closeDrawer()
+
   toastManager.showToast({
-    title: 'Pronto tendrás tu pedido',
-    message: 'Te redirigiremos a la pasarela de pago en cuanto esté disponible.',
+    title: 'Revisa tu pedido',
+    message: 'Confirma los datos y completa tu compra en tres pasos.',
     variant: 'info',
+  })
+
+  router.push({ name: 'checkout-summary' }).catch(() => {
+    // Ignoramos errores de navegación duplicada
   })
 }
 </script>
