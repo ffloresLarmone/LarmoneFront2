@@ -1,38 +1,47 @@
 <template>
   <section class="products-page py-5">
     <div class="container">
-      <header class="d-flex flex-column flex-md-row align-items-md-end justify-content-between gap-4 mb-4">
-        <div>
-          <h1 class="page-title mb-2">Catálogo de Productos</h1>
-          <p class="page-subtitle mb-0">
-            Explora nuestro catálogo y encuentra el complemento perfecto para tu estilo.
-          </p>
+      <header class="page-header rounded-4 shadow-sm bg-white p-4 p-lg-5 mb-5">
+        <div class="d-flex flex-column flex-lg-row align-items-lg-end justify-content-between gap-4">
+          <div>
+            <p class="text-uppercase text-muted fw-semibold small mb-2">Catálogo Larmone</p>
+            <h1 class="page-title mb-2">Nuestros esenciales para tu rutina</h1>
+            <p class="page-subtitle mb-0">
+              Explora el catálogo y encuentra el complemento perfecto para tu estilo.
+            </p>
+          </div>
+          <form class="filters card border-0 shadow-sm" @submit.prevent="reload">
+            <div class="card-body d-flex flex-column flex-md-row align-items-md-center gap-3">
+              <div class="search-wrapper position-relative flex-grow-1">
+                <input
+                  v-model="filters.q"
+                  type="search"
+                  class="form-control search-input"
+                  placeholder="Buscar por nombre o SKU"
+                  aria-label="Buscar productos"
+                />
+                <i class="bi bi-search search-icon" aria-hidden="true"></i>
+              </div>
+              <div class="d-flex flex-column flex-md-row gap-2 w-100 w-md-auto">
+                <select v-model.number="filters.size" class="form-select" aria-label="Resultados por página">
+                  <option :value="12">12 por página</option>
+                  <option :value="24">24 por página</option>
+                  <option :value="48">48 por página</option>
+                </select>
+                <AppButton
+                  type="submit"
+                  class="d-inline-flex align-items-center justify-content-center gap-2"
+                >
+                  <i class="bi bi-funnel" aria-hidden="true"></i>
+                  Aplicar filtros
+                </AppButton>
+              </div>
+            </div>
+          </form>
         </div>
-        <form class="filters d-flex flex-column flex-md-row gap-3" @submit.prevent="reload">
-          <div class="search-wrapper position-relative">
-            <input
-              v-model="filters.q"
-              type="search"
-              class="form-control search-input"
-              placeholder="Buscar por nombre o SKU"
-              aria-label="Buscar productos"
-            />
-            <i class="bi bi-search search-icon" aria-hidden="true"></i>
-          </div>
-          <div class="d-flex gap-2">
-            <select v-model.number="filters.size" class="form-select" aria-label="Resultados por página">
-              <option :value="12">12 por página</option>
-              <option :value="24">24 por página</option>
-              <option :value="48">48 por página</option>
-            </select>
-            <button type="submit" class="btn btn-primary-soft">
-              <i class="bi bi-funnel me-2" aria-hidden="true"></i>Aplicar filtros
-            </button>
-          </div>
-        </form>
       </header>
 
-      <div v-if="errorMessage" class="alert alert-warning" role="alert">
+      <div v-if="errorMessage" class="alert alert-warning brand-alert" role="alert">
         {{ errorMessage }}
       </div>
 
@@ -48,9 +57,14 @@
           </div>
         </div>
         <div v-else class="text-center py-5 empty-state">
-          <img src="https://placehold.co/320x200/FFE5D9/7A4329?text=Sin+resultados" alt="Sin resultados" class="img-fluid mb-3" />
+          <img
+            src="https://placehold.co/320x200/FBE7F5/8C4FB9?text=Sin+resultados"
+            alt="Sin resultados"
+            class="img-fluid mb-3"
+          />
           <h2 class="h5">No encontramos productos que coincidan con tu búsqueda.</h2>
-          <p class="mb-0">Intenta ajustar los filtros o explorar otras categorías.</p>
+          <p class="mb-4 text-muted">Intenta ajustar los filtros o explorar otras categorías.</p>
+          <AppButton variant="secondary" @click="reload">Ver catálogo completo</AppButton>
         </div>
 
         <nav v-if="hasMorePages" class="pagination-wrapper d-flex justify-content-center mt-5">
@@ -85,6 +99,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import ProductCard from '../components/products/ProductCard.vue'
 import { fetchProducts } from '../services/productService'
 import type { Producto } from '../types/api'
+import AppButton from '../components/atoms/AppButton.vue'
 
 interface Filters {
   q: string
@@ -146,25 +161,42 @@ onMounted(() => {
 
 <style scoped>
 .products-page {
-  background: radial-gradient(circle at top left, rgba(255, 232, 214, 0.9), rgba(255, 246, 237, 0.9));
+  background: linear-gradient(180deg, rgba(233, 30, 99, 0.04), rgba(140, 79, 185, 0.03));
   min-height: 100vh;
+}
+
+.page-header {
+  border: 1px solid rgba(140, 79, 185, 0.12);
+  background: rgba(255, 255, 255, 0.92);
 }
 
 .page-title {
   font-weight: 700;
-  color: #5a301d;
+  background: linear-gradient(120deg, var(--brand-primary), var(--brand-secondary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .page-subtitle {
-  color: #8a5a44;
+  color: var(--neutral-500);
+}
+
+.filters {
+  border-radius: var(--radius-lg);
 }
 
 .filters .form-control,
 .filters .form-select {
-  border-radius: 999px;
-  border: 1px solid rgba(197, 142, 108, 0.45);
+  border-radius: var(--radius-pill);
+  border: 1px solid rgba(140, 79, 185, 0.15);
   padding: 0.65rem 1rem;
-  background-color: rgba(255, 249, 243, 0.9);
+  background-color: rgba(255, 255, 255, 0.85);
+}
+
+.filters .form-select:focus,
+.filters .form-control:focus {
+  box-shadow: 0 0 0 0.2rem rgba(233, 30, 99, 0.15);
+  border-color: rgba(233, 30, 99, 0.35);
 }
 
 .search-wrapper {
@@ -180,49 +212,37 @@ onMounted(() => {
   left: 1rem;
   top: 50%;
   transform: translateY(-50%);
-  color: #bb7b52;
+  color: var(--brand-primary);
 }
 
-.btn-primary-soft {
-  border-radius: 999px;
-  padding-inline: 1.5rem;
-  background: linear-gradient(145deg, #bf6a3c, #e09a64);
-  border: none;
-  color: #fff;
-  font-weight: 600;
-  box-shadow: 0 10px 24px -16px rgba(191, 106, 60, 0.9);
-}
-
-.btn-primary-soft:hover {
-  background: linear-gradient(145deg, #ac5930, #d2874f);
-}
-
-.alert-warning {
-  background-color: rgba(255, 222, 204, 0.8);
-  border: none;
-  color: #7a3e22;
-  border-radius: 12px;
+.brand-alert {
+  background-color: rgba(233, 30, 99, 0.12);
+  border: 1px solid rgba(233, 30, 99, 0.2);
+  color: var(--brand-primary);
+  border-radius: var(--radius-md);
 }
 
 .pagination .page-link {
-  color: #8a5a44;
+  color: var(--neutral-500);
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   margin: 0 0.25rem;
-  background-color: rgba(255, 236, 221, 0.9);
+  background-color: rgba(233, 30, 99, 0.08);
+  padding-inline: 1.25rem;
 }
 
 .pagination .page-link:hover {
   color: #fff;
-  background: linear-gradient(145deg, #b56533, #d98b55);
+  background: linear-gradient(130deg, var(--brand-primary), var(--brand-secondary));
 }
 
 .pagination .page-item.disabled .page-link {
-  color: rgba(138, 90, 68, 0.5);
-  background-color: rgba(255, 236, 221, 0.5);
+  color: rgba(108, 93, 115, 0.6);
+  background-color: rgba(233, 30, 99, 0.08);
+  opacity: 0.6;
 }
 
 .empty-state {
-  color: #7a4c32;
+  color: var(--neutral-700);
 }
 </style>

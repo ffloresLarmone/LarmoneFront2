@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, type RouteLocationRaw } from 'vue-router'
 import SearchBar from '../molecules/SearchBar.vue'
 import { useAuthStore } from '../../stores/auth'
 import { useCheckoutStore } from '../../stores/checkout'
 
 interface NavLinkItem {
   label: string
-  to: { path: string; hash?: string }
+  to: RouteLocationRaw
 }
 
 const emit = defineEmits<{ (event: 'search', query: string): void }>()
@@ -18,9 +18,9 @@ const isAuthenticated = computed(() => authStore.isAuthenticated)
 const userEmail = computed(() => authStore.user?.email ?? '')
 
 const links: NavLinkItem[] = [
-  { label: 'Inicio', to: { path: '/' } },
-  { label: 'Productos', to: { path: '/', hash: '#productos' } },
-  { label: 'Ofertas', to: { path: '/', hash: '#ofertas' } },
+  { label: 'Inicio', to: { name: 'home' } },
+  { label: 'Productos', to: { name: 'products' } },
+  { label: 'Ofertas', to: { name: 'home', hash: '#ofertas' } },
 ]
 
 const handleSearch = (query: string) => {
@@ -53,12 +53,7 @@ const handleLogout = () => {
       <div class="collapse navbar-collapse" id="mainNavbar">
         <ul class="navbar-nav me-auto mb-3 mb-lg-0">
           <li v-for="link in links" :key="link.label" class="nav-item">
-            <RouterLink
-              class="nav-link fw-semibold"
-              :to="link.to"
-              active-class="text-primary"
-              exact-active-class="text-primary"
-            >
+            <RouterLink class="nav-link fw-semibold" :to="link.to" active-class="nav-link-active">
               {{ link.label }}
             </RouterLink>
           </li>
@@ -86,6 +81,11 @@ const handleLogout = () => {
 </template>
 
 <style scoped>
+.nav-link-active,
+.nav-link:hover {
+  color: var(--brand-primary) !important;
+}
+
 .text-gradient {
   background: linear-gradient(120deg, var(--brand-primary), var(--brand-secondary));
   -webkit-background-clip: text;
