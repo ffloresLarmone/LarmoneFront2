@@ -1,8 +1,26 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import AppButton from '../components/atoms/AppButton.vue'
+import { useAuthStore } from '../stores/auth'
+
+const router = useRouter()
+const authStore = useAuthStore()
+
+const email = ref('')
+const password = ref('')
+const isSubmitting = ref(false)
 
 const handleSubmit = () => {
-  // Por implementar cuando se integre la autenticación real
+  if (!email.value || !password.value) return
+
+  isSubmitting.value = true
+
+  setTimeout(() => {
+    authStore.login(email.value)
+    isSubmitting.value = false
+    router.push('/productos')
+  }, 600)
 }
 </script>
 
@@ -16,11 +34,25 @@ const handleSubmit = () => {
             <form class="d-flex flex-column gap-3" @submit.prevent="handleSubmit">
               <div>
                 <label for="email" class="form-label fw-semibold">Correo electrónico</label>
-                <input id="email" type="email" class="form-control form-control-lg" placeholder="tu@email.com" required />
+                <input
+                  id="email"
+                  v-model="email"
+                  type="email"
+                  class="form-control form-control-lg"
+                  placeholder="tu@email.com"
+                  required
+                />
               </div>
               <div>
                 <label for="password" class="form-label fw-semibold">Contraseña</label>
-                <input id="password" type="password" class="form-control form-control-lg" placeholder="********" required />
+                <input
+                  id="password"
+                  v-model="password"
+                  type="password"
+                  class="form-control form-control-lg"
+                  placeholder="********"
+                  required
+                />
               </div>
               <div class="d-flex justify-content-between align-items-center">
                 <div class="form-check">
@@ -29,7 +61,7 @@ const handleSubmit = () => {
                 </div>
                 <a href="#" class="small text-decoration-underline">¿Olvidaste tu contraseña?</a>
               </div>
-              <AppButton type="submit" label="Ingresar" size="lg" />
+              <AppButton :disabled="isSubmitting" type="submit" :label="isSubmitting ? 'Ingresando…' : 'Ingresar'" size="lg" />
             </form>
             <p class="text-center text-muted mt-4 mb-0 small">
               ¿Aún no tienes cuenta? <a href="#" class="text-decoration-underline">Crea una ahora</a>
