@@ -12,10 +12,9 @@ import UserProfile from './pages/UserProfile.vue'
 import AdminDashboard from './pages/AdminDashboard.vue'
 
 const routes = [
-  { path: '/', redirect: '/productos' },
+  { path: '/', name: 'home', component: Home },
   { path: '/productos', name: 'products', component: Products },
   { path: '/productos/:id', name: 'product-detail', component: ProductDetail, props: true },
-  { path: '/', name: 'home', component: Home },
   { path: '/login', name: 'login', component: Login },
   { path: '/checkout/resumen', name: 'checkout-summary', component: CheckoutSummary },
   { path: '/checkout/envio', name: 'checkout-shipping', component: CheckoutShipping },
@@ -33,13 +32,22 @@ const routes = [
     component: AdminDashboard,
     meta: { requiresAdmin: true },
   },
+  { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
 const router = createRouter({
   history: createWebHistory(),
   routes,
-  scrollBehavior() {
-    return { top: 0 }
+  scrollBehavior(to, _from, savedPosition) {
+    if (savedPosition) {
+      return savedPosition
+    }
+
+    if (to.hash) {
+      return { el: to.hash, behavior: 'smooth' }
+    }
+
+    return { top: 0, behavior: 'smooth' }
   },
 })
 

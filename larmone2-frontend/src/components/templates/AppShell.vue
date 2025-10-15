@@ -24,6 +24,7 @@ const handleSearch = (query: string) => {
       title: 'Búsqueda vacía',
       message: 'Ingresa una palabra clave para descubrir productos a tu medida.',
       variant: 'warning',
+      duration: 3600,
     })
     return
   }
@@ -32,6 +33,7 @@ const handleSearch = (query: string) => {
     title: 'Buscando',
     message: `Pronto te mostraremos resultados para "${query}".`,
     variant: 'info',
+    duration: 2800,
   })
 }
 
@@ -41,6 +43,7 @@ const handleCheckout = () => {
       title: 'Tu carrito está vacío',
       message: 'Agrega tus favoritos antes de continuar a la pasarela de pago.',
       variant: 'warning',
+      duration: 4000,
     })
     return
   }
@@ -52,6 +55,7 @@ const handleCheckout = () => {
     title: 'Revisa tu pedido',
     message: 'Confirma los datos y completa tu compra en tres pasos.',
     variant: 'info',
+    duration: 4000,
   })
 
   router.push({ name: 'checkout-summary' }).catch(() => {
