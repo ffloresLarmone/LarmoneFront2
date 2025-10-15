@@ -72,8 +72,9 @@ const handleLogout = () => {
           >
             Iniciar Sesión
           </RouterLink>
-          <div v-else class="d-flex align-items-center gap-3">
+          <div v-else class="d-flex align-items-center gap-3 flex-wrap justify-content-end">
             <span class="small text-muted">{{ userEmail }}</span>
+            <RouterLink to="/perfil" class="btn btn-brand fw-semibold px-4">Mi perfil</RouterLink>
             <button type="button" class="btn btn-outline-dark fw-semibold px-4" @click="handleLogout">
               Cerrar sesión
             </button>
