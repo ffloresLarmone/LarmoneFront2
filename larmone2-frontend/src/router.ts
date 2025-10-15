@@ -8,6 +8,7 @@ import CheckoutSummaryPage from './pages/CheckoutSummaryPage.vue'
 import CheckoutShippingPage from './pages/CheckoutShippingPage.vue'
 import CheckoutPaymentPage from './pages/CheckoutPaymentPage.vue'
 import CheckoutResultPage from './pages/CheckoutResultPage.vue'
+import UserProfilePage from './pages/UserProfilePage.vue'
 
 const routes = [
   { path: '/', redirect: '/productos' },
@@ -24,6 +25,7 @@ const routes = [
     component: CheckoutResultPage,
     props: (route) => ({ status: route.params.status === 'success' ? 'success' : 'failure' }),
   },
+  { path: '/perfil', name: 'profile', component: UserProfilePage },
 ]
 
 const router = createRouter({
