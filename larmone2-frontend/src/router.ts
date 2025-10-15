@@ -9,6 +9,7 @@ import CheckoutShippingPage from './pages/CheckoutShippingPage.vue'
 import CheckoutPaymentPage from './pages/CheckoutPaymentPage.vue'
 import CheckoutResultPage from './pages/CheckoutResultPage.vue'
 import UserProfilePage from './pages/UserProfilePage.vue'
+import AdminDashboardPage from './pages/AdminDashboardPage.vue'
 
 const routes = [
   { path: '/', redirect: '/productos' },
@@ -26,6 +27,12 @@ const routes = [
     props: (route) => ({ status: route.params.status === 'success' ? 'success' : 'failure' }),
   },
   { path: '/perfil', name: 'profile', component: UserProfilePage },
+  {
+    path: '/aurora/atelier',
+    name: 'admin-dashboard',
+    component: AdminDashboardPage,
+    meta: { requiresAdmin: true },
+  },
 ]
 
 const router = createRouter({
