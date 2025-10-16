@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ToastState, ToastVariant } from '../../composables/useToast'
 
-defineProps<{
+const props = defineProps<{
   toasts: ToastState[]
 }>()
 
@@ -25,13 +25,14 @@ const getVariantClass = (variant: ToastVariant) => {
 
 <template>
   <TransitionGroup
+    v-if="props.toasts.length"
     name="toast-fade"
     tag="div"
     class="toast-container position-fixed top-0 end-0 p-3"
     style="z-index: 1080"
   >
     <div
-      v-for="toast in toasts"
+      v-for="toast in props.toasts"
       :key="toast.id"
       class="toast show align-items-center border-0"
       :class="getVariantClass(toast.variant)"

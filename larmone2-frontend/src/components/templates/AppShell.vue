@@ -85,6 +85,36 @@ const handleCheckout = () => {
 
     <CartFloatingButton :item-count="itemCount" :total="totalAmount" @click="cartStore.toggleDrawer" />
 
+    <footer class="bg-light border-top py-4 mt-auto">
+      <div class="container text-center">
+        <p class="mb-1 fw-semibold">¿Necesitas asistencia?</p>
+        <p class="mb-3 text-muted small">
+          Síguenos en redes sociales o escríbenos para recibir ayuda personalizada.
+        </p>
+        <div class="d-flex flex-wrap justify-content-center gap-3">
+          <a
+            class="text-decoration-none"
+            href="https://www.instagram.com/larmone"
+            target="_blank"
+            rel="noopener"
+          >
+            Instagram
+          </a>
+          <a
+            class="text-decoration-none"
+            href="https://www.facebook.com/larmone"
+            target="_blank"
+            rel="noopener"
+          >
+            Facebook
+          </a>
+          <a class="text-decoration-none" href="mailto:soporte@larmone.com">
+            soporte@larmone.com
+          </a>
+        </div>
+      </div>
+    </footer>
+
     <ToastContainer :toasts="toastManager.toasts" @dismiss="toastManager.dismiss" />
   </div>
 </template>
