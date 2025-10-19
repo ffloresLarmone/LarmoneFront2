@@ -151,6 +151,8 @@ async function loadProduct() {
       error instanceof Error
         ? error.message
         : 'No fue posible cargar la información del producto. Intenta nuevamente.'
+    producto.value = null
+    selectedImage.value = fallbackImage
   } finally {
     loading.value = false
   }

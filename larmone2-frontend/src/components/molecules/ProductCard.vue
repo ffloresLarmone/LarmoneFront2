@@ -1,10 +1,19 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import AppButton from '../atoms/AppButton.vue'
 import type { ProductSummary } from '../../composables/useFeaturedProducts'
 
-defineProps<{
+const props = defineProps<{
   product: ProductSummary
 }>()
+
+const formattedPrice = computed(() =>
+  new Intl.NumberFormat('es-CL', {
+    style: 'currency',
+    currency: 'CLP',
+    minimumFractionDigits: 0,
+  }).format(props.product.price ?? 0),
+)
 
 const emit = defineEmits<{ (event: 'add-to-cart', product: ProductSummary): void }>()
 
@@ -25,7 +34,7 @@ const handleAdd = (product: ProductSummary) => {
       <h5 class="card-title fw-semibold">{{ product.name }}</h5>
       <p class="card-text text-muted small flex-grow-1">{{ product.description }}</p>
       <div class="d-flex align-items-center justify-content-between mt-3">
-        <span class="fw-bold fs-5 text-primary">${{ product.price.toFixed(2) }}</span>
+        <span class="fw-bold fs-5 text-primary">{{ formattedPrice }}</span>
         <AppButton size="sm" @click="handleAdd(product)">
           <i class="bi bi-bag-plus me-2" /> Añadir
         </AppButton>

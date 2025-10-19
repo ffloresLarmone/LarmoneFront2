@@ -1,4 +1,7 @@
 import { computed, onMounted, ref, type ComputedRef, type Ref } from 'vue'
+import { fetchProducts } from '../services/productService'
+import { FALLBACK_IMAGE, mapearProductosConImagenes } from '../services/imageService'
+import type { Producto } from '../types/api'
 
 export interface ProductSummary {
   id: string
@@ -17,36 +20,6 @@ interface UseFeaturedProducts {
   reload: () => Promise<void>
 }
 
-const mockProducts: ProductSummary[] = [
-  {
-    id: 'lipstick-rose',
-    name: 'Labial Rosa Aurora',
-    description: 'Acabado satinado con ácido hialurónico para labios hidratados todo el día.',
-    price: 19.99,
-    image:
-      'https://images.unsplash.com/photo-1612810806695-30ba14fb733c?auto=format&fit=crop&w=400&q=80',
-    tags: ['Best seller', 'Vegano'],
-  },
-  {
-    id: 'serum-glow',
-    name: 'Suero Glow Vitamina C',
-    description: 'Fórmula iluminadora con antioxidantes que unifican el tono de la piel.',
-    price: 34.5,
-    image:
-      'https://images.unsplash.com/photo-1619946794135-5bc917a27793?auto=format&fit=crop&w=400&q=80',
-    tags: ['Nuevo', 'Libre de parabenos'],
-  },
-  {
-    id: 'palette-midnight',
-    name: 'Paleta Midnight Muse',
-    description: '12 tonos intensos inspirados en el atardecer. Incluye espejo panorámico.',
-    price: 42.0,
-    image:
-      'https://images.unsplash.com/photo-1512496015851-a90fb38ba796?auto=format&fit=crop&w=400&q=80',
-    tags: ['Edición limitada'],
-  },
-]
-
 export const useFeaturedProducts = (): UseFeaturedProducts => {
   const products = ref<ProductSummary[]>([])
   const loading = ref<boolean>(false)
@@ -55,13 +28,19 @@ export const useFeaturedProducts = (): UseFeaturedProducts => {
   const loadProducts = async () => {
     loading.value = true
     error.value = null
+    products.value = []
 
     try {
-      await new Promise((resolve) => {
-        globalThis.setTimeout(resolve, 600)
+      const response = await fetchProducts({
+        page: 1,
+        pageSize: 6,
+        soloActivos: true,
+        orden: 'recientes',
       })
 
-      products.value = [...mockProducts]
+      const enriched = await mapearProductosConImagenes(response.items)
+
+      products.value = enriched.map((producto) => mapToSummary(producto))
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'No pudimos cargar los productos destacados.'
       products.value = []
@@ -82,5 +61,36 @@ export const useFeaturedProducts = (): UseFeaturedProducts => {
     error,
     hasProducts,
     reload: loadProducts,
+  }
+}
+
+function mapToSummary(producto: Producto & { _thumb?: string }): ProductSummary {
+  const tags: string[] = []
+
+  if (producto.destacado) {
+    tags.push('Destacado')
+  }
+
+  if (producto.marca) {
+    tags.push(producto.marca)
+  }
+
+  if (producto.categorias?.length) {
+    const categoria = producto.categorias[0]?.categoria?.nombre
+    if (categoria) {
+      tags.push(categoria)
+    }
+  }
+
+  return {
+    id: producto.id,
+    name: producto.nombre,
+    description:
+      producto.descripcionCorta ??
+      producto.descripcion ??
+      'Muy pronto conocerás todos los detalles de este producto en nuestro catálogo.',
+    price: producto.precio,
+    image: producto._thumb ?? FALLBACK_IMAGE,
+    tags: tags.slice(0, 3),
   }
 }
