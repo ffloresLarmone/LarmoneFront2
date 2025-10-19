@@ -88,15 +88,15 @@ onMounted(() => {
 
                   <div v-else>
                     <ul class="list-unstyled mb-4 d-flex flex-column gap-3">
-                      <li v-for="item in items" :key="item.id_variante" class="d-flex gap-3 align-items-center">
+                      <li v-for="item in items" :key="item.id" class="d-flex gap-3 align-items-center">
                         <div class="product-thumbnail rounded-3 overflow-hidden">
                           <img
                             :src="item.imagen || 'https://placehold.co/80x80/FFE5D9/663C2C?text=Producto'"
-                            :alt="item.nombre || `Producto ${item.id_variante}`"
+                            :alt="item.nombre || `Producto ${item.productoId}`"
                           />
                         </div>
                         <div class="flex-grow-1">
-                          <h3 class="h6 fw-semibold mb-1">{{ item.nombre || `Producto ${item.id_variante}` }}</h3>
+                          <h3 class="h6 fw-semibold mb-1">{{ item.nombre || `Producto ${item.productoId}` }}</h3>
                           <p class="mb-0 text-muted small">Cantidad: {{ item.cantidad }}</p>
                         </div>
                         <div class="fw-semibold">
@@ -105,7 +105,7 @@ onMounted(() => {
                               style: 'currency',
                               currency: 'CLP',
                               minimumFractionDigits: 0,
-                            }).format(item.precio_unitario * item.cantidad)
+                            }).format(item.precioUnitario * item.cantidad)
                           }}
                         </div>
                       </li>

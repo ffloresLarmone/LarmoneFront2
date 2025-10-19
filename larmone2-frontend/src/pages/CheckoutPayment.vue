@@ -136,12 +136,12 @@ onMounted(() => {
                 <div class="card-body p-4">
                   <h2 class="h5 fw-bold mb-4">Productos en tu pedido</h2>
                   <ul class="list-unstyled d-flex flex-column gap-3 mb-0">
-                    <li v-for="item in items" :key="item.id_variante" class="d-flex justify-content-between gap-3">
+                    <li v-for="item in items" :key="item.id" class="d-flex justify-content-between gap-3">
                       <div>
-                        <span class="fw-semibold d-block">{{ item.nombre || `Producto ${item.id_variante}` }}</span>
+                        <span class="fw-semibold d-block">{{ item.nombre || `Producto ${item.productoId}` }}</span>
                         <small class="text-muted">Cantidad: {{ item.cantidad }}</small>
                       </div>
-                      <strong>{{ formattedCurrency(item.precio_unitario * item.cantidad) }}</strong>
+                      <strong>{{ formattedCurrency(item.precioUnitario * item.cantidad) }}</strong>
                     </li>
                   </ul>
                 </div>

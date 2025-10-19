@@ -1,99 +1,39 @@
 import { defineStore } from 'pinia'
-import { getCart, updateCart } from '../services/cartService'
-import type { Carrito, ItemCarrito } from '../types/api'
+import {
+  addCartItem,
+  clearCart as clearCartRequest,
+  getCart,
+  removeCartItem as removeCartItemRequest,
+  updateCartItem as updateCartItemRequest,
+} from '../services/cartService'
+import { FALLBACK_IMAGE, obtenerImagenPrincipal } from '../services/imageService'
+import type { Carrito, CarritoItem } from '../types/api'
 
-export interface CartItemDisplay extends ItemCarrito {
-  precio_unitario: number
-}
-
-interface CartSnapshot {
-  id_carrito: number
-  items: CartItemDisplay[]
-  total: number
+export interface CartItemDisplay {
+  id: string
+  productoId: string
+  cantidad: number
+  precioUnitario: number
+  nombre?: string
+  imagen?: string
 }
 
 interface CartState {
-  cart: CartSnapshot | null
+  cart: Carrito | null
   loading: boolean
   error: string | null
   isDrawerOpen: boolean
 }
 
-const STORAGE_KEY = 'larmone-cart'
-
-const calculateTotal = (items: CartItemDisplay[]) =>
-  items.reduce((acc, item) => acc + item.cantidad * (item.precio_unitario ?? 0), 0)
-
-const normalizeItem = (item: ItemCarrito): CartItemDisplay => ({
-  id_variante: item.id_variante,
-  cantidad: item.cantidad,
-  precio_unitario: item.precio_unitario ?? 0,
-  nombre: item.nombre,
-  imagen: item.imagen,
-})
-
-const loadStoredCart = (): CartSnapshot | null => {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(STORAGE_KEY)
-  if (!raw) return null
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<CartSnapshot>
-    if (!parsed || !Array.isArray(parsed.items)) return null
-
-    const items = parsed.items
-      .map((item) => ({
-        id_variante: item.id_variante,
-        cantidad: item.cantidad,
-        precio_unitario: item.precio_unitario,
-        nombre: item.nombre,
-        imagen: item.imagen,
-      }))
-      .filter((item): item is CartItemDisplay =>
-        typeof item.id_variante === 'number' && typeof item.cantidad === 'number'
-      )
-      .map((item) => normalizeItem({ ...item, cantidad: Math.max(1, item.cantidad) }))
-
-    return {
-      id_carrito: typeof parsed.id_carrito === 'number' ? parsed.id_carrito : Date.now(),
-      items,
-      total: typeof parsed.total === 'number' ? parsed.total : calculateTotal(items),
-    }
-  } catch (error) {
-    console.warn('No fue posible recuperar el carrito almacenado', error)
-    return null
-  }
-}
-
-const persistCart = (cart: CartSnapshot | null) => {
-  if (typeof window === 'undefined' || !cart) return
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cart))
-}
-
-const toUpdatePayload = (items: CartItemDisplay[]): ItemCarrito[] =>
-  items.map((item) => ({
-    id_variante: item.id_variante,
-    cantidad: item.cantidad,
-    precio_unitario: item.precio_unitario,
-  }))
-
-const mergeWithLocalMetadata = (
-  remote: Carrito,
-  localItems: CartItemDisplay[]
-): CartSnapshot => {
-  const items = remote.items.map((item) => {
-    const local = localItems.find((localItem) => localItem.id_variante === item.id_variante)
-    return {
-      ...normalizeItem(item),
-      nombre: local?.nombre ?? item.nombre,
-      imagen: local?.imagen ?? item.imagen,
-    }
-  })
-
+const mapToDisplayItem = (item: CarritoItem): CartItemDisplay => {
+  const principal = obtenerImagenPrincipal(item.producto?.imagenes)
   return {
-    id_carrito: remote.id_carrito,
-    items,
-    total: typeof remote.total === 'number' ? remote.total : calculateTotal(items),
+    id: item.id,
+    productoId: item.productoId,
+    cantidad: item.cantidad,
+    precioUnitario: item.precioUnitario,
+    nombre: item.producto?.nombre,
+    imagen: principal?.url ?? FALLBACK_IMAGE,
   }
 }
 
@@ -105,136 +45,26 @@ export const useCartStore = defineStore('cart', {
     isDrawerOpen: false,
   }),
   getters: {
-    items: (state) => state.cart?.items ?? [],
-    itemCount: (state) => state.cart?.items.reduce((acc, item) => acc + item.cantidad, 0) ?? 0,
-    totalAmount: (state) => state.cart?.total ?? 0,
+    items(state): CartItemDisplay[] {
+      return state.cart?.items.map(mapToDisplayItem) ?? []
+    },
+    itemCount(state): number {
+      return state.cart?.items.reduce((acc, item) => acc + item.cantidad, 0) ?? 0
+    },
+    totalAmount(state): number {
+      if (typeof state.cart?.total === 'number') {
+        return state.cart.total
+      }
+      return state.cart?.items.reduce(
+        (acc, item) => acc + item.cantidad * item.precioUnitario,
+        0,
+      ) ?? 0
+    },
     isEmpty(): boolean {
       return this.itemCount === 0
     },
   },
   actions: {
-    async fetchCart() {
-      this.loading = true
-      this.error = null
-
-      try {
-        const remoteCart = await getCart()
-        const snapshot = mergeWithLocalMetadata(remoteCart, this.cart?.items ?? [])
-        this.cart = snapshot
-        persistCart(snapshot)
-      } catch (error) {
-        const stored = loadStoredCart()
-        if (stored) {
-          this.cart = stored
-        } else if (!this.cart) {
-          this.cart = { id_carrito: Date.now(), items: [], total: 0 }
-        }
-
-        if (error instanceof Error) {
-          this.error = error.message
-        } else {
-          this.error = 'No pudimos sincronizar tu carrito. Usaremos los datos locales.'
-        }
-      } finally {
-        this.loading = false
-      }
-    },
-    async syncCart(items: CartItemDisplay[]) {
-      const snapshot: CartSnapshot = {
-        id_carrito: this.cart?.id_carrito ?? Date.now(),
-        items: items.map((item) => normalizeItem(item)),
-        total: calculateTotal(items),
-      }
-
-      this.cart = snapshot
-      persistCart(snapshot)
-
-      try {
-        const response = await updateCart({ items: toUpdatePayload(snapshot.items) })
-        const merged = mergeWithLocalMetadata(response, snapshot.items)
-        this.cart = merged
-        persistCart(merged)
-        this.error = null
-      } catch (error) {
-        if (error instanceof Error) {
-          this.error = error.message
-        } else {
-          this.error = 'No pudimos sincronizar tu carrito. Guardamos los cambios localmente.'
-        }
-      }
-    },
-    ensureCartLoaded() {
-      if (!this.cart) {
-        const stored = loadStoredCart()
-        if (stored) {
-          this.cart = stored
-        } else {
-          this.cart = { id_carrito: Date.now(), items: [], total: 0 }
-        }
-      }
-    },
-    async addItem(item: ItemCarrito) {
-      this.ensureCartLoaded()
-      this.loading = true
-      this.error = null
-
-      const newItem = normalizeItem(item)
-      const existingItems = this.cart?.items ?? []
-      const index = existingItems.findIndex((cartItem) => cartItem.id_variante === newItem.id_variante)
-
-      const updatedItems = index >= 0
-        ? existingItems.map((cartItem, cartIndex) =>
-            cartIndex === index
-              ? {
-                  ...cartItem,
-                  cantidad: cartItem.cantidad + newItem.cantidad,
-                  precio_unitario: newItem.precio_unitario || cartItem.precio_unitario,
-                  nombre: newItem.nombre ?? cartItem.nombre,
-                  imagen: newItem.imagen ?? cartItem.imagen,
-                }
-              : cartItem
-          )
-        : [...existingItems, newItem]
-
-      await this.syncCart(updatedItems)
-      this.loading = false
-    },
-    async incrementItem(id_variante: ItemCarrito['id_variante']) {
-      if (!this.cart) return
-      this.loading = true
-      const updatedItems = this.cart.items.map((item) =>
-        item.id_variante === id_variante
-          ? { ...item, cantidad: item.cantidad + 1 }
-          : item
-      )
-      await this.syncCart(updatedItems)
-      this.loading = false
-    },
-    async decrementItem(id_variante: ItemCarrito['id_variante']) {
-      if (!this.cart) return
-      this.loading = true
-      const updatedItems = this.cart.items
-        .map((item) =>
-          item.id_variante === id_variante
-            ? { ...item, cantidad: Math.max(0, item.cantidad - 1) }
-            : item
-        )
-        .filter((item) => item.cantidad > 0)
-      await this.syncCart(updatedItems)
-      this.loading = false
-    },
-    async removeItem(id_variante: ItemCarrito['id_variante']) {
-      if (!this.cart) return
-      this.loading = true
-      const updatedItems = this.cart.items.filter((item) => item.id_variante !== id_variante)
-      await this.syncCart(updatedItems)
-      this.loading = false
-    },
-    async clearCart() {
-      this.loading = true
-      await this.syncCart([])
-      this.loading = false
-    },
     openDrawer() {
       this.isDrawerOpen = true
     },
@@ -243,6 +73,124 @@ export const useCartStore = defineStore('cart', {
     },
     toggleDrawer() {
       this.isDrawerOpen = !this.isDrawerOpen
+    },
+    async refreshCart() {
+      const cart = await getCart()
+      this.cart = cart
+      this.error = null
+    },
+    async fetchCart() {
+      this.loading = true
+      this.error = null
+      try {
+        await this.refreshCart()
+      } catch (error) {
+        if (error instanceof Error) {
+          this.error = error.message
+        } else {
+          this.error = 'No pudimos obtener tu carrito en este momento.'
+        }
+      } finally {
+        this.loading = false
+      }
+    },
+    async addItem({ productoId, cantidad = 1 }: { productoId: string; cantidad?: number }) {
+      if (!productoId) {
+        throw new Error('Se requiere un identificador de producto para agregar al carrito.')
+      }
+
+      this.loading = true
+      this.error = null
+      try {
+        await addCartItem({ productoId, cantidad })
+        await this.refreshCart()
+      } catch (error) {
+        if (error instanceof Error) {
+          this.error = error.message
+          throw error
+        }
+        this.error = 'No pudimos agregar el producto al carrito.'
+        throw new Error(this.error)
+      } finally {
+        this.loading = false
+      }
+    },
+    async updateItemQuantity(productoId: string, cantidad: number) {
+      if (!productoId) return
+      if (cantidad <= 0) {
+        await this.removeItem(productoId)
+        return
+      }
+
+      this.loading = true
+      this.error = null
+      try {
+        await updateCartItemRequest({ productoId, cantidad })
+        await this.refreshCart()
+      } catch (error) {
+        if (error instanceof Error) {
+          this.error = error.message
+        } else {
+          this.error = 'No fue posible actualizar la cantidad.'
+        }
+      } finally {
+        this.loading = false
+      }
+    },
+    async incrementItem(productoId: string) {
+      const current = this.cart?.items.find((item) => item.productoId === productoId)
+      const nextCantidad = (current?.cantidad ?? 0) + 1
+      await this.updateItemQuantity(productoId, nextCantidad)
+    },
+    async decrementItem(productoId: string) {
+      const current = this.cart?.items.find((item) => item.productoId === productoId)
+      if (!current) return
+      const nextCantidad = current.cantidad - 1
+      await this.updateItemQuantity(productoId, nextCantidad)
+    },
+    async removeItem(productoId: string) {
+      if (!productoId) return
+
+      this.loading = true
+      this.error = null
+      try {
+        await removeCartItemRequest(productoId)
+        await this.refreshCart()
+      } catch (error) {
+        if (error instanceof Error) {
+          this.error = error.message
+        } else {
+          this.error = 'No pudimos eliminar el producto del carrito.'
+        }
+      } finally {
+        this.loading = false
+      }
+    },
+    async clearCart() {
+      this.loading = true
+      this.error = null
+      try {
+        await clearCartRequest()
+        try {
+          await this.refreshCart()
+        } catch {
+          this.cart = {
+            id: this.cart?.id ?? crypto.randomUUID(),
+            items: [],
+            subtotal: 0,
+            total: 0,
+            updatedAt: new Date().toISOString(),
+          }
+        }
+      } catch (error) {
+        if (error instanceof Error) {
+          this.error = error.message
+        } else {
+          this.error = 'No fue posible vaciar el carrito.'
+        }
+      } finally {
+        this.loading = false
+      }
     },
   },
 })

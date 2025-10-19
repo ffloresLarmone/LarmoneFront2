@@ -23,7 +23,11 @@
                 <i class="bi bi-search search-icon" aria-hidden="true"></i>
               </div>
               <div class="d-flex flex-column flex-md-row gap-2 w-100 w-md-auto">
-                <select v-model.number="filters.size" class="form-select" aria-label="Resultados por página">
+                <select
+                  v-model.number="filters.pageSize"
+                  class="form-select"
+                  aria-label="Resultados por página"
+                >
                   <option :value="12">12 por página</option>
                   <option :value="24">24 por página</option>
                   <option :value="48">48 por página</option>
@@ -52,7 +56,7 @@
 
       <div v-else>
         <div v-if="products.length" class="row g-4">
-          <div v-for="producto in products" :key="producto.id_producto" class="col-12 col-sm-6 col-lg-4">
+          <div v-for="producto in products" :key="producto.id" class="col-12 col-sm-6 col-lg-4">
             <ProductCard :producto="producto" />
           </div>
         </div>
@@ -75,14 +79,14 @@
               </button>
             </li>
             <li class="page-item disabled">
-              <span class="page-link">Página {{ filters.page }} de {{ totalPages }}</span>
+              <span class="page-link">Página {{ filters.page }} de {{ displayTotalPages }}</span>
             </li>
-            <li :class="['page-item', { disabled: filters.page === totalPages }]">
+            <li :class="['page-item', { disabled: filters.page === displayTotalPages }]">
               <button
                 class="page-link"
                 type="button"
                 @click="changePage(filters.page + 1)"
-                :disabled="filters.page === totalPages"
+                :disabled="filters.page === displayTotalPages"
               >
                 Siguiente
               </button>
@@ -105,13 +109,13 @@ import AppButton from '../components/atoms/AppButton.vue'
 interface Filters {
   q: string
   page: number
-  size: number
+  pageSize: number
 }
 
 const filters = reactive<Filters>({
   q: '',
   page: 1,
-  size: 12,
+  pageSize: 12,
 })
 
 const isLoading = ref(false)
@@ -120,21 +124,24 @@ type ProductoConThumb = Producto & { _thumb?: string }
 
 const products = ref<ProductoConThumb[]>([])
 const total = ref(0)
+const totalPages = ref(1)
 
-const totalPages = computed(() => {
-  if (!total.value) return 1
-  return Math.max(1, Math.ceil(total.value / filters.size))
-})
+const displayTotalPages = computed(() => Math.max(1, totalPages.value))
 
-const hasMorePages = computed(() => totalPages.value > 1)
+const hasMorePages = computed(() => displayTotalPages.value > 1)
 
 async function loadProducts() {
   isLoading.value = true
   errorMessage.value = ''
   try {
-    const response = await fetchProducts({ ...filters })
+    const response = await fetchProducts({
+      q: filters.q,
+      page: filters.page,
+      pageSize: filters.pageSize,
+    })
     products.value = await mapearProductosConImagenes(response.items)
     total.value = response.total
+    totalPages.value = response.totalPages || Math.max(1, Math.ceil(response.total / response.pageSize))
   } catch (error) {
     errorMessage.value =
       error instanceof Error
@@ -146,7 +153,7 @@ async function loadProducts() {
 }
 
 function changePage(page: number) {
-  if (page < 1 || page > totalPages.value) return
+  if (page < 1 || page > displayTotalPages.value) return
   filters.page = page
   loadProducts()
   window.scrollTo({ top: 0, behavior: 'smooth' })
