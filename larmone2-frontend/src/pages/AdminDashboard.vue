@@ -45,22 +45,20 @@ const setActiveTab = (id: TabConfig['id']) => {
   activeTab.value = id
 }
 
-type ImagenProductoConUrl = ImagenProducto & { resolvedUrl?: string }
-
-const productoSeleccionado = ref<number | null>(null)
-const productoSeleccionadoModel = computed<number | ''>({
+const productoSeleccionado = ref<string | null>(null)
+const productoSeleccionadoModel = computed<string>({
   get: () => productoSeleccionado.value ?? '',
   set: (value) => {
-    if (value === '' || value === null) {
+    if (typeof value !== 'string') {
       productoSeleccionado.value = null
       return
     }
-    const parsed = typeof value === 'number' ? value : Number(value)
-    productoSeleccionado.value = Number.isFinite(parsed) && parsed > 0 ? parsed : null
+    const sanitized = value.trim()
+    productoSeleccionado.value = sanitized.length > 0 ? sanitized : null
   },
 })
 
-const imagenesProducto = ref<ImagenProductoConUrl[]>([])
+const imagenesProducto = ref<ImagenProducto[]>([])
 
 const resumenImagenes = computed(() => {
   const total = imagenesProducto.value.length
@@ -68,7 +66,7 @@ const resumenImagenes = computed(() => {
   return `${total} ${total === 1 ? 'imagen' : 'imágenes'} registradas`
 })
 
-const manejarImagenesActualizadas = (imagenes: ImagenProductoConUrl[]) => {
+const manejarImagenesActualizadas = (imagenes: ImagenProducto[]) => {
   imagenesProducto.value = imagenes
 }
 </script>
@@ -161,14 +159,13 @@ const manejarImagenesActualizadas = (imagenes: ImagenProductoConUrl[]) => {
                     <div class="col-12 col-md-6">
                       <label class="form-label">ID del producto</label>
                       <input
-                        type="number"
-                        min="1"
+                        type="text"
                         class="form-control"
-                        placeholder="Ej: 101"
+                        placeholder="Ej: prod-123"
                         v-model="productoSeleccionadoModel"
                       />
                       <small class="text-muted d-block mt-1">
-                        Ingresa un identificador válido para cargar y administrar imágenes.
+                        Ingresa el identificador o slug expuesto por la API para consultar las imágenes.
                       </small>
                     </div>
                     <div class="col-12">

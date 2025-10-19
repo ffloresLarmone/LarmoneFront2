@@ -16,9 +16,9 @@ const { isOpen, items, loading, total } = toRefs(props)
 const emit = defineEmits<{
   (event: 'close'): void
   (event: 'checkout'): void
-  (event: 'increment', id: CartItemDisplay['id_variante']): void
-  (event: 'decrement', id: CartItemDisplay['id_variante']): void
-  (event: 'remove', id: CartItemDisplay['id_variante']): void
+  (event: 'increment', id: CartItemDisplay['productoId']): void
+  (event: 'decrement', id: CartItemDisplay['productoId']): void
+  (event: 'remove', id: CartItemDisplay['productoId']): void
 }>()
 
 const hasItems = computed(() => items.value.length > 0)
@@ -31,7 +31,7 @@ const formattedTotal = computed(() =>
   }).format(total.value)
 )
 
-const emitEvent = (event: CartEvent, id?: CartItemDisplay['id_variante']) => {
+const emitEvent = (event: CartEvent, id?: CartItemDisplay['productoId']) => {
   if (event === 'close' || event === 'checkout') {
     emit(event)
     return
@@ -80,22 +80,22 @@ const handleDrawerClick = (event: MouseEvent) => {
             </div>
 
             <ul v-else-if="hasItems" class="list-unstyled mb-0 d-flex flex-column gap-3">
-              <li v-for="item in items" :key="item.id_variante" class="cart-item d-flex gap-3 align-items-start">
+              <li v-for="item in items" :key="item.id" class="cart-item d-flex gap-3 align-items-start">
                 <div class="cart-item-thumbnail">
                   <img
                     :src="item.imagen || 'https://placehold.co/80x80/FFE5D9/663C2C?text=Producto'"
-                    :alt="item.nombre || `Producto ${item.id_variante}`"
+                    :alt="item.nombre || `Producto ${item.productoId}`"
                   />
                 </div>
                 <div class="flex-grow-1">
                   <div class="d-flex justify-content-between gap-2">
                     <div class="cart-item-name">
-                      {{ item.nombre || `Producto ${item.id_variante}` }}
+                      {{ item.nombre || `Producto ${item.productoId}` }}
                     </div>
                     <button
                       type="button"
                       class="btn btn-link btn-sm text-danger text-decoration-none"
-                      @click="emitEvent('remove', item.id_variante)"
+                      @click="emitEvent('remove', item.productoId)"
                     >
                       <i class="bi bi-trash me-1" aria-hidden="true"></i>Eliminar
                     </button>
@@ -106,7 +106,7 @@ const handleDrawerClick = (event: MouseEvent) => {
                         type="button"
                         class="btn btn-outline-secondary btn-sm"
                         :disabled="item.cantidad <= 1"
-                        @click="emitEvent('decrement', item.id_variante)"
+                        @click="emitEvent('decrement', item.productoId)"
                       >
                         <i class="bi bi-dash" aria-hidden="true"></i>
                         <span class="visually-hidden">Disminuir</span>
@@ -115,7 +115,7 @@ const handleDrawerClick = (event: MouseEvent) => {
                       <button
                         type="button"
                         class="btn btn-outline-secondary btn-sm"
-                        @click="emitEvent('increment', item.id_variante)"
+                        @click="emitEvent('increment', item.productoId)"
                       >
                         <i class="bi bi-plus" aria-hidden="true"></i>
                         <span class="visually-hidden">Aumentar</span>
@@ -127,7 +127,7 @@ const handleDrawerClick = (event: MouseEvent) => {
                           style: 'currency',
                           currency: 'CLP',
                           minimumFractionDigits: 0,
-                        }).format(item.precio_unitario * item.cantidad)
+                        }).format(item.precioUnitario * item.cantidad)
                       }}
                     </div>
                   </div>

@@ -1,77 +1,53 @@
 <template>
   <div class="product-image-manager">
     <p v-if="!hasProductoSeleccionado" class="text-muted mb-0">
-      Selecciona un producto para administrar sus imágenes.
+      Selecciona un producto para visualizar sus imágenes actuales.
     </p>
 
     <div v-else>
-      <div class="row g-3 align-items-end">
-        <div class="col-12 col-md-6">
-          <label class="form-label">Imagen principal</label>
-          <input
-            type="file"
-            class="form-control"
-            accept="image/jpeg,image/png,image/webp"
-            :disabled="uploading"
-            @change="onPrincipalChange"
-          />
-          <small class="text-muted d-block mt-1">
-            Formatos permitidos: JPG, PNG o WEBP. Máximo {{ maxSizeLabel }}.
-          </small>
-        </div>
-        <div class="col-12 col-md-6">
-          <label class="form-label">Agregar a galería</label>
-          <input
-            type="file"
-            class="form-control"
-            accept="image/jpeg,image/png,image/webp"
-            :disabled="uploading"
-            @change="onGaleriaChange"
-          />
-          <small class="text-muted d-block mt-1">Puedes subir imágenes adicionales del producto.</small>
-        </div>
-      </div>
-
-      <div v-if="tempPreview" class="alert alert-info d-flex align-items-center gap-3 mt-3" role="status">
-        <img :src="tempPreview.url" alt="Vista previa" class="rounded preview-thumb" />
+      <div class="alert alert-info d-flex align-items-start gap-3" role="status">
+        <i class="bi bi-images fs-4"></i>
         <div>
-          <p class="mb-1 fw-semibold">Vista previa local</p>
-          <p class="mb-0 small text-muted">
-            La imagen se subirá como {{ tempPreview.principal ? 'principal' : 'parte de la galería' }}.
+          <p class="fw-semibold mb-1">Gestión disponible vía API</p>
+          <p class="mb-0 small">
+            Usa los endpoints de <code>POST /api/productos/:id/imagenes</code> y <code>PATCH</code>/<code>DELETE</code>
+            correspondientes para agregar o actualizar imágenes. Esta vista muestra el estado sincronizado.
           </p>
         </div>
       </div>
 
-      <div v-if="uploadProgress > 0 && uploadProgress < 100" class="progress mt-3" style="height: 6px;">
-        <div class="progress-bar" role="progressbar" :style="{ width: `${uploadProgress}%` }"></div>
+      <div v-if="loading" class="text-center py-5" role="status">
+        <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+        <p class="mt-3 mb-0">Cargando imágenes del producto…</p>
       </div>
 
-      <div v-if="errorMessage" class="alert alert-danger mt-3" role="alert">
-        {{ errorMessage }}
-      </div>
-      <div v-else-if="successMessage" class="alert alert-success mt-3" role="alert">
-        {{ successMessage }}
-      </div>
+      <div v-else>
+        <div v-if="errorMessage" class="alert alert-danger" role="alert">{{ errorMessage }}</div>
+        <div v-else>
+          <header class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Galería registrada</h5>
+            <span class="text-muted small" v-if="imagenes.length">{{ resumenImagenes }}</span>
+          </header>
 
-      <div class="gallery mt-4">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-          <h5 class="mb-0">Galería del producto</h5>
-          <span v-if="loading" class="text-muted small">Cargando imágenes...</span>
-        </div>
+          <div v-if="imagenes.length === 0" class="text-muted">
+            No hay imágenes asociadas a este producto. Puedes registrarlas desde el backend.
+          </div>
 
-        <div v-if="imagenes.length === 0 && !loading" class="text-muted">
-          Aún no hay imágenes registradas para este producto.
-        </div>
-
-        <div v-else class="row g-3">
-          <div v-for="imagen in imagenes" :key="imagen.id_imagen" class="col-6 col-md-4 col-lg-3">
-            <div class="image-tile position-relative p-2 h-100">
-              <img
-                :src="imagen.resolvedUrl || imagen.url_publica || fallbackThumbnail"
-                class="img-fluid rounded shadow-sm"
-                :alt="`Imagen ${imagen.id_imagen}`"
-              />
-              <span v-if="imagen.principal" class="badge text-bg-primary principal-badge">Principal</span>
+          <div v-else class="row g-3">
+            <div v-for="imagen in imagenes" :key="imagen.id || imagen.url" class="col-12 col-md-6 col-xl-4">
+              <div class="image-tile h-100">
+                <img :src="imagen.url || fallbackThumbnail" :alt="imagen.alt || 'Imagen del producto'" />
+                <div class="image-meta">
+                  <p class="mb-1 fw-semibold text-truncate" :title="imagen.url">{{ imagen.url }}</p>
+                  <p class="mb-1 small text-muted">{{ imagen.alt || 'Sin descripción' }}</p>
+                  <span
+                    class="badge"
+                    :class="imagen.principal ? 'text-bg-primary' : 'text-bg-secondary'"
+                  >
+                    {{ imagen.principal ? 'Principal' : 'Galería' }}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -81,71 +57,52 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { fetchProductById } from '../../services/productService'
-import { subirImagenProducto, urlParaVerImagen } from '../../services/imageService'
+import { computed, ref, watch } from 'vue'
+import { fetchProductById, fetchProductBySlug } from '../../services/productService'
 import type { ImagenProducto } from '../../types/api'
+import { FALLBACK_IMAGE } from '../../services/imageService'
 
-const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
-const MAX_BYTES = 10 * 1024 * 1024
-const fallbackThumbnail = 'https://placehold.co/160x160/FFE5D9/663C2C?text=Sin+imagen'
+const fallbackThumbnail = FALLBACK_IMAGE
 
-type ResolvedImagenProducto = ImagenProducto & { resolvedUrl?: string }
-type TempPreview = { url: string; principal: boolean }
+const props = defineProps<{ idProducto: string | null }>()
+const emit = defineEmits<{ (event: 'imagenes-actualizadas', imagenes: ImagenProducto[]): void }>()
 
-const props = defineProps<{ idProducto: number | null }>()
-const emit = defineEmits<{ (event: 'imagenes-actualizadas', imagenes: ResolvedImagenProducto[]): void }>()
-
-const imagenes = ref<ResolvedImagenProducto[]>([])
+const imagenes = ref<ImagenProducto[]>([])
 const loading = ref(false)
 const errorMessage = ref('')
-const successMessage = ref('')
-const uploading = ref(false)
-const uploadProgress = ref(0)
-const tempPreview = ref<TempPreview | null>(null)
 
-const hasProductoSeleccionado = computed(() => typeof props.idProducto === 'number' && props.idProducto > 0)
-const maxSizeLabel = computed(() => `${Math.round(MAX_BYTES / (1024 * 1024))} MB`)
+const hasProductoSeleccionado = computed(() => typeof props.idProducto === 'string' && props.idProducto.length > 0)
 
-function clearTempPreview() {
-  if (tempPreview.value) {
-    URL.revokeObjectURL(tempPreview.value.url)
-    tempPreview.value = null
-  }
-}
-
-onBeforeUnmount(() => {
-  clearTempPreview()
+const resumenImagenes = computed(() => {
+  const total = imagenes.value.length
+  if (!total) return ''
+  return `${total} ${total === 1 ? 'imagen' : 'imágenes'} registradas`
 })
 
 watch(
   () => props.idProducto,
   async (nuevoId) => {
-    clearTempPreview()
     imagenes.value = []
     errorMessage.value = ''
-    successMessage.value = ''
-    uploadProgress.value = 0
-    if (typeof nuevoId === 'number' && nuevoId > 0) {
+    if (typeof nuevoId === 'string' && nuevoId.trim().length > 0) {
       await cargarImagenes(nuevoId)
     }
   },
   { immediate: true },
 )
 
-async function cargarImagenes(idProducto: number) {
+async function cargarImagenes(idProducto: string) {
   loading.value = true
   errorMessage.value = ''
   try {
-    const producto = await fetchProductById(idProducto)
-    const resolved = await Promise.all(
-      (producto.imagenes ?? []).map(async (imagen) => ({
-        ...imagen,
-        resolvedUrl: await urlParaVerImagen(imagen),
-      })),
-    )
-    imagenes.value = resolved
-    emit('imagenes-actualizadas', resolved)
+    let producto
+    try {
+      producto = await fetchProductById(idProducto)
+    } catch (error) {
+      producto = await fetchProductBySlug(idProducto)
+    }
+    imagenes.value = producto.imagenes ?? []
+    emit('imagenes-actualizadas', imagenes.value)
   } catch (error) {
     errorMessage.value =
       error instanceof Error
@@ -153,88 +110,6 @@ async function cargarImagenes(idProducto: number) {
         : 'No fue posible cargar las imágenes del producto. Intenta nuevamente.'
   } finally {
     loading.value = false
-  }
-}
-
-function resetInput(event: Event) {
-  const input = event.target as HTMLInputElement | null
-  if (input) {
-    input.value = ''
-  }
-}
-
-function validateFile(file: File): string | null {
-  if (!ACCEPTED_TYPES.includes(file.type)) {
-    return 'Formato no soportado. Solo se permiten imágenes JPEG, PNG o WEBP.'
-  }
-  if (file.size > MAX_BYTES) {
-    return `El archivo supera el máximo permitido de ${maxSizeLabel.value}.`
-  }
-  return null
-}
-
-async function onPrincipalChange(event: Event) {
-  await manejarArchivo(event, true)
-}
-
-async function onGaleriaChange(event: Event) {
-  await manejarArchivo(event, false)
-}
-
-async function manejarArchivo(event: Event, principal: boolean) {
-  const input = event.target as HTMLInputElement | null
-  const file = input?.files?.[0]
-  resetInput(event)
-  if (!file || !hasProductoSeleccionado.value || !props.idProducto) {
-    return
-  }
-
-  const validationMessage = validateFile(file)
-  if (validationMessage) {
-    errorMessage.value = validationMessage
-    successMessage.value = ''
-    return
-  }
-
-  clearTempPreview()
-  tempPreview.value = { url: URL.createObjectURL(file), principal }
-
-  await subirArchivo(file, principal)
-}
-
-async function subirArchivo(file: File, principal: boolean) {
-  if (!props.idProducto) return
-  uploading.value = true
-  uploadProgress.value = 0
-  errorMessage.value = ''
-  successMessage.value = ''
-
-  try {
-    await subirImagenProducto({
-      idProducto: props.idProducto,
-      file,
-      principal,
-      onProgress: (progress) => {
-        uploadProgress.value = progress
-      },
-    })
-
-    successMessage.value = principal
-      ? 'La imagen principal se actualizó correctamente.'
-      : 'Se agregó una nueva imagen a la galería.'
-
-    await cargarImagenes(props.idProducto)
-  } catch (error) {
-    errorMessage.value =
-      error instanceof Error
-        ? error.message
-        : 'No pudimos completar la carga de la imagen. Intenta nuevamente.'
-  } finally {
-    uploading.value = false
-    setTimeout(() => {
-      uploadProgress.value = 0
-      clearTempPreview()
-    }, 500)
   }
 }
 </script>
@@ -247,28 +122,26 @@ async function subirArchivo(file: File, principal: boolean) {
   padding: 1.5rem;
 }
 
-.preview-thumb {
-  width: 72px;
-  height: 72px;
-  object-fit: cover;
-}
-
 .image-tile {
   background: rgba(255, 255, 255, 0.9);
-  border: 1px dashed rgba(140, 79, 185, 0.2);
+  border: 1px solid rgba(140, 79, 185, 0.12);
   border-radius: var(--radius-md);
-  text-align: center;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .image-tile img {
   width: 100%;
-  height: 160px;
+  height: 200px;
   object-fit: cover;
 }
 
-.principal-badge {
-  position: absolute;
-  top: 12px;
-  left: 12px;
+.image-meta {
+  padding: 0.75rem 1rem;
+}
+
+.image-meta p {
+  margin-bottom: 0;
 }
 </style>

@@ -23,16 +23,14 @@
             <div v-if="producto.imagenes?.length" class="thumbs mt-3 d-flex flex-wrap gap-2">
               <button
                 v-for="imagen in producto.imagenes"
-                :key="imagen.id_imagen"
+                :key="imagen.id || imagen.resolvedUrl || imagen.url"
                 type="button"
                 class="thumb"
-                :class="{ active: (imagen.resolvedUrl || imagen.url_publica || fallbackImage) === selectedImage }"
-                @click="
-                  selectedImage = imagen.resolvedUrl || imagen.url_publica || fallbackImage
-                "
+                :class="{ active: (imagen.resolvedUrl || imagen.url || fallbackImage) === selectedImage }"
+                @click="selectedImage = imagen.resolvedUrl || imagen.url || fallbackImage"
               >
                 <img
-                  :src="imagen.resolvedUrl || imagen.url_publica || fallbackImage"
+                  :src="imagen.resolvedUrl || imagen.url || fallbackImage"
                   :alt="`Imagen ${producto.nombre}`"
                 />
               </button>
@@ -42,14 +40,20 @@
         <div class="col-12 col-lg-6">
           <div class="detail-info">
             <h1 class="product-name">{{ producto.nombre }}</h1>
-            <p class="text-muted mb-3">SKU: {{ producto.sku }}</p>
+            <p class="text-muted mb-1">Slug: {{ producto.slug }}</p>
+            <p v-if="producto.marca" class="text-muted mb-3">Marca: {{ producto.marca }}</p>
+            <p v-if="formattedPrice" class="product-price">{{ formattedPrice }}</p>
             <div class="badge-status mb-4">
               <span class="badge" :class="producto.activo ? 'bg-success-soft' : 'bg-secondary-soft'">
                 {{ producto.activo ? 'Disponible' : 'No disponible' }}
               </span>
             </div>
             <p class="description">
-              Disfruta de un diseño cuidadosamente elaborado con materiales de alta calidad. Este producto forma parte de nuestra colección exclusiva.
+              {{
+                producto.descripcion ||
+                  producto.descripcionCorta ||
+                  'Descubre todos los detalles de este lanzamiento exclusivo directamente en nuestro catálogo.'
+              }}
             </p>
             <div class="actions mt-4 d-flex flex-column flex-sm-row gap-3">
               <button class="btn btn-accent" type="button" @click="addToCart" :disabled="cartLoading">
@@ -59,7 +63,7 @@
             <dl class="mt-4 product-meta">
               <div class="meta-item">
                 <dt>Identificador interno</dt>
-                <dd>#{{ producto.id_producto }}</dd>
+                <dd>#{{ producto.id }}</dd>
               </div>
               <div class="meta-item">
                 <dt>Fecha de creación</dt>
@@ -77,16 +81,18 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { fetchProductById } from '../services/productService'
-import { urlParaVerImagen } from '../services/imageService'
-import type { Producto } from '../types/api'
+import { fetchProductBySlug } from '../services/productService'
+import { FALLBACK_IMAGE, obtenerImagenPrincipal, urlParaVerImagen } from '../services/imageService'
+import type { ImagenProducto, Producto } from '../types/api'
 import { useCartStore } from '../stores/cart'
 import { useToast } from '../composables/useToast'
 
 const route = useRoute()
 const router = useRouter()
-const producto = ref<Producto | null>(null)
-const fallbackImage = 'https://placehold.co/600x480/FFE5D9/663C2C?text=Sin+imagen'
+type ResolvedImagen = ImagenProducto & { resolvedUrl?: string }
+
+const producto = ref<(Producto & { imagenes?: ResolvedImagen[] }) | null>(null)
+const fallbackImage = FALLBACK_IMAGE
 const selectedImage = ref(fallbackImage)
 const loading = ref(false)
 const errorMessage = ref('')
@@ -95,8 +101,8 @@ const { loading: cartLoading } = storeToRefs(cartStore)
 const { showToast } = useToast()
 
 const formattedCreatedAt = computed(() => {
-  if (!producto.value?.creado_en) return 'Sin registro'
-  const date = new Date(producto.value.creado_en)
+  if (!producto.value?.createdAt) return 'Sin registro'
+  const date = new Date(producto.value.createdAt)
   return new Intl.DateTimeFormat('es-CL', {
     year: 'numeric',
     month: 'long',
@@ -104,17 +110,26 @@ const formattedCreatedAt = computed(() => {
   }).format(date)
 })
 
+const formattedPrice = computed(() =>
+  producto.value
+    ? new Intl.NumberFormat('es-CL', {
+        style: 'currency',
+        currency: 'CLP',
+        minimumFractionDigits: 0,
+      }).format(producto.value.precio ?? 0)
+    : '',
+)
+
 async function loadProduct() {
-  const idParam = route.params.id
-  const id = Number(idParam)
-  if (!Number.isFinite(id)) {
+  const slugParam = route.params.slug
+  if (typeof slugParam !== 'string' || slugParam.trim().length === 0) {
     errorMessage.value = 'El identificador del producto no es válido.'
     return
   }
   loading.value = true
   errorMessage.value = ''
   try {
-    const data = await fetchProductById(id)
+    const data = await fetchProductBySlug(slugParam)
     const resolvedImagenes = await Promise.all(
       (data.imagenes ?? []).map(async (img) => ({
         ...img,
@@ -126,13 +141,8 @@ async function loadProduct() {
       imagenes: resolvedImagenes,
     }
     if (resolvedImagenes.length) {
-      const principal = resolvedImagenes.find((img) => img.principal) ?? resolvedImagenes[0]
-      selectedImage.value =
-        principal.resolvedUrl ||
-        principal.url_publica ||
-        resolvedImagenes[0].resolvedUrl ||
-        resolvedImagenes[0].url_publica ||
-        fallbackImage
+      const principal = obtenerImagenPrincipal(resolvedImagenes) ?? resolvedImagenes[0]
+      selectedImage.value = principal.resolvedUrl ?? principal.url ?? fallbackImage
     } else {
       selectedImage.value = fallbackImage
     }
@@ -150,11 +160,8 @@ async function addToCart() {
   if (!producto.value) return
   try {
     await cartStore.addItem({
-      id_variante: producto.value.id_producto,
+      productoId: producto.value.id,
       cantidad: 1,
-      precio_unitario: producto.value.precio ?? 0,
-      nombre: producto.value.nombre,
-      imagen: selectedImage.value || fallbackImage,
     })
 
     if (cartStore.error) {
@@ -256,6 +263,13 @@ onMounted(() => {
   font-size: 2.25rem;
   font-weight: 700;
   color: #47261a;
+}
+
+.product-price {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--brand-primary);
+  margin-bottom: 1rem;
 }
 
 .badge {

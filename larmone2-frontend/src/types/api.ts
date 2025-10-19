@@ -1,86 +1,99 @@
 export interface ImagenProducto {
-  id_imagen: number
-  url_publica: string | null
-  mime_type: string
-  principal: boolean
-  bucket?: string
-  object_key?: string
-  resolvedUrl?: string
-}
-
-export type PresignUploadReq = {
-  filename: string
-  contentType: string
-  keyPrefix?: string
-}
-
-export type PresignUploadRes = {
-  bucket: string
-  key: string
+  id?: string
   url: string
-  expiresIn: number
+  alt?: string | null
+  principal?: boolean
+  orden?: number | null
 }
 
-export type ConfirmImagenReq = {
-  bucket: string
-  object_key: string
-  mime_type: string
-  bytes_size?: number
-  principal?: boolean
-  url_publica?: string | null
+export interface ProductoCategoriaResumen {
+  categoria: {
+    id: string
+    nombre: string
+    slug: string
+  }
+}
+
+export interface ProductoAtributo {
+  clave: string
+  valor: string
+}
+
+export interface ProductoRatingResumen {
+  total: number
+  promedio: number
+  distribucion: Record<string, number>
 }
 
 export interface Producto {
-  id_producto: number
-  sku: string
+  id: string
   nombre: string
   slug: string
+  descripcion?: string | null
+  descripcionCorta?: string | null
+  marca?: string | null
+  precio: number
   activo: boolean
-  creado_en: string
+  destacado: boolean
+  skuBase?: string | null
+  createdAt: string
+  updatedAt?: string
   imagenes?: ImagenProducto[]
-  precio?: number
-}
-
-export interface ProductoCrear {
-  sku: string
-  nombre: string
-  slug: string
-  descripcion_corta?: string
-  descripcion_larga?: string
-  activo?: boolean
-}
-
-export interface ProductoEditar extends ProductoCrear {}
-
-export interface ItemCarrito {
-  id_variante: number
-  cantidad: number
-  precio_unitario?: number
-  nombre?: string
-  imagen?: string
-}
-
-export interface Carrito {
-  id_carrito: number
-  items: ItemCarrito[]
-  total: number
-}
-
-export interface CarritoActualizar {
-  items: ItemCarrito[]
-}
-
-export interface Pedido {
-  id_pedido: number
-  codigo_publico: string
-  total: number
-  estado: string
-  creado_en: string
+  categorias?: ProductoCategoriaResumen[]
+  atributos?: ProductoAtributo[]
+  stockTotal?: number
+  rating?: number
+  ratingCount?: number
+  ratingResumen?: ProductoRatingResumen
 }
 
 export interface PagedResponse<T> {
   items: T[]
   page: number
-  size: number
+  pageSize: number
   total: number
+  totalPages: number
+}
+
+export interface CarritoProductoResumen {
+  id: string
+  nombre: string
+  slug: string
+  precio: number
+  marca?: string | null
+  activo?: boolean
+  destacado?: boolean
+  imagenes?: ImagenProducto[]
+}
+
+export interface CarritoItem {
+  id: string
+  productoId: string
+  cantidad: number
+  precioUnitario: number
+  subtotal: number
+  producto?: CarritoProductoResumen
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface Carrito {
+  id: string
+  usuarioId?: string
+  items: CarritoItem[]
+  subtotal: number
+  descuento?: number
+  impuesto?: number
+  total: number
+  updatedAt: string
+}
+
+export interface AddCartItemPayload {
+  productoId: string
+  cantidad: number
+}
+
+export interface UpdateCartItemPayload {
+  productoId: string
+  cantidad: number
 }

@@ -15,7 +15,6 @@ app.use(pinia)
 app.use(router)
 
 const cartStore = useCartStore(pinia)
-cartStore.ensureCartLoaded()
 cartStore.fetchCart().catch(() => {
   // En entornos sin sesión iniciada podemos ignorar el error inicial
 })

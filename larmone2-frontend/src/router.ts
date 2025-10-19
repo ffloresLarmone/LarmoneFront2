@@ -14,7 +14,7 @@ import AdminDashboard from './pages/AdminDashboard.vue'
 const routes = [
   { path: '/', name: 'home', component: Home },
   { path: '/productos', name: 'products', component: Products },
-  { path: '/productos/:id', name: 'product-detail', component: ProductDetail, props: true },
+  { path: '/productos/:slug', name: 'product-detail', component: ProductDetail, props: true },
   { path: '/login', name: 'login', component: Login },
   { path: '/checkout/resumen', name: 'checkout-summary', component: CheckoutSummary },
   { path: '/checkout/envio', name: 'checkout-shipping', component: CheckoutShipping },

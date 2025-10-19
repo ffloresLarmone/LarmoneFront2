@@ -4,7 +4,6 @@ import { RouterLink } from 'vue-router'
 import AppButton from '../components/atoms/AppButton.vue'
 import { useToast } from '../composables/useToast'
 import { useAuthStore } from '../stores/auth'
-import { useCartStore } from '../stores/cart'
 
 interface OrderItemSummary {
   name: string
@@ -48,7 +47,6 @@ interface FavoriteProduct {
 }
 
 const authStore = useAuthStore()
-const cartStore = useCartStore()
 const { showToast } = useToast()
 
 const currencyFormatter = new Intl.NumberFormat('es-CL', {
@@ -370,17 +368,10 @@ const addFavoriteToCart = async (product: FavoriteProduct) => {
 
   addingFavoriteId.value = product.id
   try {
-    await cartStore.addItem({
-      id_variante: product.id,
-      cantidad: 1,
-      precio_unitario: product.price,
-      nombre: product.name,
-      imagen: product.image,
-    })
     showToast({
-      title: 'Producto añadido al carrito',
-      message: `${product.name} se agregó a tu carrito exitosamente.`,
-      variant: 'success',
+      title: 'Disponible en el catálogo',
+      message: `Busca ${product.name} en la tienda para agregarlo con disponibilidad real.`,
+      variant: 'info',
     })
   } finally {
     addingFavoriteId.value = null
