@@ -98,6 +98,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import ProductCard from '../components/products/ProductCard.vue'
 import { fetchProducts } from '../services/productService'
+import { mapearProductosConImagenes } from '../services/imageService'
 import type { Producto } from '../types/api'
 import AppButton from '../components/atoms/AppButton.vue'
 
@@ -115,7 +116,9 @@ const filters = reactive<Filters>({
 
 const isLoading = ref(false)
 const errorMessage = ref('')
-const products = ref<Producto[]>([])
+type ProductoConThumb = Producto & { _thumb?: string }
+
+const products = ref<ProductoConThumb[]>([])
 const total = ref(0)
 
 const totalPages = computed(() => {
@@ -130,7 +133,7 @@ async function loadProducts() {
   errorMessage.value = ''
   try {
     const response = await fetchProducts({ ...filters })
-    products.value = response.items
+    products.value = await mapearProductosConImagenes(response.items)
     total.value = response.total
   } catch (error) {
     errorMessage.value =
