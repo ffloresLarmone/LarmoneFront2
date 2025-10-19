@@ -147,6 +147,9 @@ async function loadProducts() {
       error instanceof Error
         ? error.message
         : 'Ocurrió un error al cargar los productos. Por favor intenta nuevamente.'
+    products.value = []
+    total.value = 0
+    totalPages.value = 1
   } finally {
     isLoading.value = false
   }

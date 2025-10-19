@@ -75,9 +75,19 @@ export const useCartStore = defineStore('cart', {
       this.isDrawerOpen = !this.isDrawerOpen
     },
     async refreshCart() {
-      const cart = await getCart()
-      this.cart = cart
-      this.error = null
+      try {
+        const cart = await getCart()
+        this.cart = cart
+        this.error = null
+      } catch (error) {
+        this.cart = null
+        if (error instanceof Error) {
+          this.error = error.message
+          throw error
+        }
+        this.error = 'No pudimos obtener tu carrito en este momento.'
+        throw new Error(this.error)
+      }
     },
     async fetchCart() {
       this.loading = true
@@ -85,9 +95,7 @@ export const useCartStore = defineStore('cart', {
       try {
         await this.refreshCart()
       } catch (error) {
-        if (error instanceof Error) {
-          this.error = error.message
-        } else {
+        if (!(error instanceof Error)) {
           this.error = 'No pudimos obtener tu carrito en este momento.'
         }
       } finally {
@@ -105,6 +113,7 @@ export const useCartStore = defineStore('cart', {
         await addCartItem({ productoId, cantidad })
         await this.refreshCart()
       } catch (error) {
+        this.cart = null
         if (error instanceof Error) {
           this.error = error.message
           throw error
@@ -128,6 +137,7 @@ export const useCartStore = defineStore('cart', {
         await updateCartItemRequest({ productoId, cantidad })
         await this.refreshCart()
       } catch (error) {
+        this.cart = null
         if (error instanceof Error) {
           this.error = error.message
         } else {
@@ -157,6 +167,7 @@ export const useCartStore = defineStore('cart', {
         await removeCartItemRequest(productoId)
         await this.refreshCart()
       } catch (error) {
+        this.cart = null
         if (error instanceof Error) {
           this.error = error.message
         } else {
@@ -188,6 +199,7 @@ export const useCartStore = defineStore('cart', {
         } else {
           this.error = 'No fue posible vaciar el carrito.'
         }
+        this.cart = null
       } finally {
         this.loading = false
       }

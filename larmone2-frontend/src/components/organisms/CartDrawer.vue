@@ -9,9 +9,10 @@ const props = defineProps<{
   items: CartItemDisplay[]
   loading: boolean
   total: number
+  error?: string | null
 }>()
 
-const { isOpen, items, loading, total } = toRefs(props)
+const { isOpen, items, loading, total, error } = toRefs(props)
 
 const emit = defineEmits<{
   (event: 'close'): void
@@ -78,70 +79,75 @@ const handleDrawerClick = (event: MouseEvent) => {
             <div v-if="loading" class="d-flex justify-content-center align-items-center h-100" role="status">
               <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
             </div>
+            <div v-else class="h-100 d-flex flex-column gap-3">
+              <div v-if="error" class="alert alert-warning mb-0" role="alert">
+                {{ error }}
+              </div>
 
-            <ul v-else-if="hasItems" class="list-unstyled mb-0 d-flex flex-column gap-3">
-              <li v-for="item in items" :key="item.id" class="cart-item d-flex gap-3 align-items-start">
-                <div class="cart-item-thumbnail">
-                  <img
-                    :src="item.imagen || 'https://placehold.co/80x80/FFE5D9/663C2C?text=Producto'"
-                    :alt="item.nombre || `Producto ${item.productoId}`"
-                  />
-                </div>
-                <div class="flex-grow-1">
-                  <div class="d-flex justify-content-between gap-2">
-                    <div class="cart-item-name">
-                      {{ item.nombre || `Producto ${item.productoId}` }}
-                    </div>
-                    <button
-                      type="button"
-                      class="btn btn-link btn-sm text-danger text-decoration-none"
-                      @click="emitEvent('remove', item.productoId)"
-                    >
-                      <i class="bi bi-trash me-1" aria-hidden="true"></i>Eliminar
-                    </button>
+              <ul v-if="hasItems" class="list-unstyled mb-0 d-flex flex-column gap-3">
+                <li v-for="item in items" :key="item.id" class="cart-item d-flex gap-3 align-items-start">
+                  <div class="cart-item-thumbnail">
+                    <img
+                      :src="item.imagen || 'https://placehold.co/80x80/FFE5D9/663C2C?text=Producto'"
+                      :alt="item.nombre || `Producto ${item.productoId}`"
+                    />
                   </div>
-                  <div class="d-flex justify-content-between align-items-center mt-2">
-                    <div class="btn-group" role="group" aria-label="Modificar cantidad">
+                  <div class="flex-grow-1">
+                    <div class="d-flex justify-content-between gap-2">
+                      <div class="cart-item-name">
+                        {{ item.nombre || `Producto ${item.productoId}` }}
+                      </div>
                       <button
                         type="button"
-                        class="btn btn-outline-secondary btn-sm"
-                        :disabled="item.cantidad <= 1"
-                        @click="emitEvent('decrement', item.productoId)"
+                        class="btn btn-link btn-sm text-danger text-decoration-none"
+                        @click="emitEvent('remove', item.productoId)"
                       >
-                        <i class="bi bi-dash" aria-hidden="true"></i>
-                        <span class="visually-hidden">Disminuir</span>
-                      </button>
-                      <span class="quantity-indicator">{{ item.cantidad }}</span>
-                      <button
-                        type="button"
-                        class="btn btn-outline-secondary btn-sm"
-                        @click="emitEvent('increment', item.productoId)"
-                      >
-                        <i class="bi bi-plus" aria-hidden="true"></i>
-                        <span class="visually-hidden">Aumentar</span>
+                        <i class="bi bi-trash me-1" aria-hidden="true"></i>Eliminar
                       </button>
                     </div>
-                    <div class="cart-item-price">
-                      {{
-                        new Intl.NumberFormat('es-CL', {
-                          style: 'currency',
-                          currency: 'CLP',
-                          minimumFractionDigits: 0,
-                        }).format(item.precioUnitario * item.cantidad)
-                      }}
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                      <div class="btn-group" role="group" aria-label="Modificar cantidad">
+                        <button
+                          type="button"
+                          class="btn btn-outline-secondary btn-sm"
+                          :disabled="item.cantidad <= 1"
+                          @click="emitEvent('decrement', item.productoId)"
+                        >
+                          <i class="bi bi-dash" aria-hidden="true"></i>
+                          <span class="visually-hidden">Disminuir</span>
+                        </button>
+                        <span class="quantity-indicator">{{ item.cantidad }}</span>
+                        <button
+                          type="button"
+                          class="btn btn-outline-secondary btn-sm"
+                          @click="emitEvent('increment', item.productoId)"
+                        >
+                          <i class="bi bi-plus" aria-hidden="true"></i>
+                          <span class="visually-hidden">Aumentar</span>
+                        </button>
+                      </div>
+                      <div class="cart-item-price">
+                        {{
+                          new Intl.NumberFormat('es-CL', {
+                            style: 'currency',
+                            currency: 'CLP',
+                            minimumFractionDigits: 0,
+                          }).format(item.precioUnitario * item.cantidad)
+                        }}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </li>
-            </ul>
+                </li>
+              </ul>
 
-            <div v-else class="empty-state text-center">
-              <img
-                src="https://placehold.co/220x160/FFF4EC/BB7B52?text=Tu+carrito+te+espera"
-                alt="Carrito vacío"
-                class="img-fluid mb-3"
-              />
-              <p class="mb-0">Explora nuestro catálogo y añade tus imprescindibles de belleza.</p>
+              <div v-else class="empty-state text-center">
+                <img
+                  src="https://placehold.co/220x160/FFF4EC/BB7B52?text=Tu+carrito+te+espera"
+                  alt="Carrito vacío"
+                  class="img-fluid mb-3"
+                />
+                <p class="mb-0">Explora nuestro catálogo y añade tus imprescindibles de belleza.</p>
+              </div>
             </div>
           </section>
 
