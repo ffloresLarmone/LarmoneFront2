@@ -6,8 +6,10 @@ import type { Producto } from '../../types/api'
 import { useCartStore } from '../../stores/cart'
 import { useToast } from '../../composables/useToast'
 
+type ProductoConThumb = Producto & { _thumb?: string }
+
 const props = defineProps<{
-  producto: Producto
+  producto: ProductoConThumb
 }>()
 
 const router = useRouter()
@@ -15,12 +17,26 @@ const cartStore = useCartStore()
 const { loading: cartLoading } = storeToRefs(cartStore)
 const { showToast } = useToast()
 
+const fallbackImage = 'https://placehold.co/400x300/FBE7F5/8C4FB9?text=Sin+imagen'
+
 const mainImage = computed(() => {
-  if (!props.producto.imagenes?.length) {
-    return 'https://placehold.co/400x300/FBE7F5/8C4FB9?text=Sin+imagen'
+  if (props.producto._thumb) {
+    return props.producto._thumb
   }
-  const principal = props.producto.imagenes.find((img) => img.principal)
-  return principal?.url_publica ?? props.producto.imagenes[0].url_publica
+
+  const imagenes = props.producto.imagenes ?? []
+  if (!imagenes.length) {
+    return fallbackImage
+  }
+
+  const principal = imagenes.find((img) => img.principal)
+  return (
+    principal?.resolvedUrl ??
+    principal?.url_publica ??
+    imagenes[0]?.resolvedUrl ??
+    imagenes[0]?.url_publica ??
+    fallbackImage
+  )
 })
 
 function goToDetail() {

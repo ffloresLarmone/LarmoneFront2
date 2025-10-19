@@ -26,10 +26,15 @@
                 :key="imagen.id_imagen"
                 type="button"
                 class="thumb"
-                :class="{ active: imagen.url_publica === selectedImage }"
-                @click="selectedImage = imagen.url_publica"
+                :class="{ active: (imagen.resolvedUrl || imagen.url_publica || fallbackImage) === selectedImage }"
+                @click="
+                  selectedImage = imagen.resolvedUrl || imagen.url_publica || fallbackImage
+                "
               >
-                <img :src="imagen.url_publica" :alt="`Imagen ${producto.nombre}`" />
+                <img
+                  :src="imagen.resolvedUrl || imagen.url_publica || fallbackImage"
+                  :alt="`Imagen ${producto.nombre}`"
+                />
               </button>
             </div>
           </div>
@@ -73,6 +78,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { fetchProductById } from '../services/productService'
+import { urlParaVerImagen } from '../services/imageService'
 import type { Producto } from '../types/api'
 import { useCartStore } from '../stores/cart'
 import { useToast } from '../composables/useToast'
@@ -80,7 +86,8 @@ import { useToast } from '../composables/useToast'
 const route = useRoute()
 const router = useRouter()
 const producto = ref<Producto | null>(null)
-const selectedImage = ref('https://placehold.co/600x480/FFE5D9/663C2C?text=Sin+imagen')
+const fallbackImage = 'https://placehold.co/600x480/FFE5D9/663C2C?text=Sin+imagen'
+const selectedImage = ref(fallbackImage)
 const loading = ref(false)
 const errorMessage = ref('')
 const cartStore = useCartStore()
@@ -108,10 +115,26 @@ async function loadProduct() {
   errorMessage.value = ''
   try {
     const data = await fetchProductById(id)
-    producto.value = data
-    if (data.imagenes?.length) {
-      const principal = data.imagenes.find((img) => img.principal)
-      selectedImage.value = principal?.url_publica ?? data.imagenes[0].url_publica
+    const resolvedImagenes = await Promise.all(
+      (data.imagenes ?? []).map(async (img) => ({
+        ...img,
+        resolvedUrl: await urlParaVerImagen(img),
+      })),
+    )
+    producto.value = {
+      ...data,
+      imagenes: resolvedImagenes,
+    }
+    if (resolvedImagenes.length) {
+      const principal = resolvedImagenes.find((img) => img.principal) ?? resolvedImagenes[0]
+      selectedImage.value =
+        principal.resolvedUrl ||
+        principal.url_publica ||
+        resolvedImagenes[0].resolvedUrl ||
+        resolvedImagenes[0].url_publica ||
+        fallbackImage
+    } else {
+      selectedImage.value = fallbackImage
     }
   } catch (error) {
     errorMessage.value =
@@ -131,7 +154,7 @@ async function addToCart() {
       cantidad: 1,
       precio_unitario: producto.value.precio ?? 0,
       nombre: producto.value.nombre,
-      imagen: selectedImage.value,
+      imagen: selectedImage.value || fallbackImage,
     })
 
     if (cartStore.error) {

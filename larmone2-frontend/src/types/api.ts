@@ -1,8 +1,33 @@
 export interface ImagenProducto {
   id_imagen: number
-  url_publica: string
+  url_publica: string | null
   mime_type: string
   principal: boolean
+  bucket?: string
+  object_key?: string
+  resolvedUrl?: string
+}
+
+export type PresignUploadReq = {
+  filename: string
+  contentType: string
+  keyPrefix?: string
+}
+
+export type PresignUploadRes = {
+  bucket: string
+  key: string
+  url: string
+  expiresIn: number
+}
+
+export type ConfirmImagenReq = {
+  bucket: string
+  object_key: string
+  mime_type: string
+  bytes_size?: number
+  principal?: boolean
+  url_publica?: string | null
 }
 
 export interface Producto {
@@ -12,7 +37,7 @@ export interface Producto {
   slug: string
   activo: boolean
   creado_en: string
-  imagenes: ImagenProducto[]
+  imagenes?: ImagenProducto[]
   precio?: number
 }
 

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import ProductImageManager from '../components/products/ProductImageManager.vue'
+import type { ImagenProducto } from '../types/api'
 
 interface TabConfig {
   id: string
@@ -41,6 +43,33 @@ const activeTabConfig = computed(() => tabs.find((tab) => tab.id === activeTab.v
 
 const setActiveTab = (id: TabConfig['id']) => {
   activeTab.value = id
+}
+
+type ImagenProductoConUrl = ImagenProducto & { resolvedUrl?: string }
+
+const productoSeleccionado = ref<number | null>(null)
+const productoSeleccionadoModel = computed<number | ''>({
+  get: () => productoSeleccionado.value ?? '',
+  set: (value) => {
+    if (value === '' || value === null) {
+      productoSeleccionado.value = null
+      return
+    }
+    const parsed = typeof value === 'number' ? value : Number(value)
+    productoSeleccionado.value = Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  },
+})
+
+const imagenesProducto = ref<ImagenProductoConUrl[]>([])
+
+const resumenImagenes = computed(() => {
+  const total = imagenesProducto.value.length
+  if (!total) return ''
+  return `${total} ${total === 1 ? 'imagen' : 'imágenes'} registradas`
+})
+
+const manejarImagenesActualizadas = (imagenes: ImagenProductoConUrl[]) => {
+  imagenesProducto.value = imagenes
 }
 </script>
 
@@ -129,6 +158,19 @@ const setActiveTab = (id: TabConfig['id']) => {
                     </button>
                   </header>
                   <form class="row g-3">
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">ID del producto</label>
+                      <input
+                        type="number"
+                        min="1"
+                        class="form-control"
+                        placeholder="Ej: 101"
+                        v-model="productoSeleccionadoModel"
+                      />
+                      <small class="text-muted d-block mt-1">
+                        Ingresa un identificador válido para cargar y administrar imágenes.
+                      </small>
+                    </div>
                     <div class="col-12">
                       <label class="form-label">Nombre</label>
                       <input type="text" class="form-control" placeholder="Ej: Vestido seda Aurora" />
@@ -178,12 +220,14 @@ const setActiveTab = (id: TabConfig['id']) => {
                       </div>
                     </div>
                     <div class="col-12">
-                      <label class="form-label">Imágenes del producto</label>
-                      <div class="upload-zone border border-dashed rounded-3 p-4 text-center">
-                        <i class="bi bi-cloud-arrow-up fs-3 mb-2"></i>
-                        <p class="mb-1">Arrastra y suelta o</p>
-                        <button type="button" class="btn btn-sm btn-primary">Selecciona archivos</button>
-                      </div>
+                      <label class="form-label d-flex justify-content-between align-items-center">
+                        Imágenes del producto
+                        <span v-if="resumenImagenes" class="badge bg-light text-muted">{{ resumenImagenes }}</span>
+                      </label>
+                      <ProductImageManager
+                        :id-producto="productoSeleccionado"
+                        @imagenes-actualizadas="manejarImagenesActualizadas"
+                      />
                     </div>
                     <div class="col-12 d-flex gap-2">
                       <button type="submit" class="btn btn-primary">Guardar cambios</button>
@@ -642,17 +686,6 @@ const setActiveTab = (id: TabConfig['id']) => {
 
 .panel h3 {
   color: #272752;
-}
-
-.upload-zone {
-  border-color: rgba(103, 82, 255, 0.4) !important;
-  background-color: rgba(103, 82, 255, 0.05);
-  transition: border-color 0.2s ease, background-color 0.2s ease;
-}
-
-.upload-zone:hover {
-  border-color: rgba(103, 82, 255, 0.8) !important;
-  background-color: rgba(103, 82, 255, 0.08);
 }
 
 .summary-card {
