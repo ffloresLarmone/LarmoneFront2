@@ -1,7 +1,11 @@
 import { defineStore } from 'pinia'
 
 interface UserProfile {
+  id?: string
   email: string
+  firstName?: string | null
+  lastName?: string | null
+  phone?: string | null
 }
 
 interface AuthState {
@@ -29,7 +33,23 @@ const loadStoredState = (): AuthState => {
 
     return {
       isAuthenticated: Boolean(parsed.isAuthenticated),
-      user: parsed.user && typeof parsed.user.email === 'string' ? { email: parsed.user.email } : null,
+      user:
+        parsed.user && typeof parsed.user === 'object' && parsed.user !== null
+          ? (() => {
+              const rawUser = parsed.user as Record<string, unknown>
+              const email = typeof rawUser.email === 'string' ? rawUser.email : null
+              if (!email) {
+                return null
+              }
+              return {
+                email,
+                id: typeof rawUser.id === 'string' ? rawUser.id : undefined,
+                firstName: typeof rawUser.firstName === 'string' ? rawUser.firstName : undefined,
+                lastName: typeof rawUser.lastName === 'string' ? rawUser.lastName : undefined,
+                phone: typeof rawUser.phone === 'string' ? rawUser.phone : undefined,
+              }
+            })()
+          : null,
     }
   } catch (error) {
     console.warn('No fue posible recuperar la sesión almacenada', error)
@@ -45,9 +65,9 @@ const persistState = (state: AuthState) => {
 export const useAuthStore = defineStore('auth', {
   state: (): AuthState => loadStoredState(),
   actions: {
-    login(email: string) {
+    login(user: UserProfile) {
       this.isAuthenticated = true
-      this.user = { email }
+      this.user = user
       persistState(this.$state)
     },
     logout() {
