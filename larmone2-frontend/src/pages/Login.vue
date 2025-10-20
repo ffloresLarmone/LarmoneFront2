@@ -3,11 +3,14 @@ import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppButton from '../components/atoms/AppButton.vue'
 import { useAuthStore } from '../stores/auth'
+import { useToast } from '../composables/useToast'
+import { authenticateUser, registerUser } from '../services/authService'
 
 type Mode = 'login' | 'register'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const { showToast } = useToast()
 
 const mode = ref<Mode>('login')
 const isSubmitting = ref(false)
@@ -59,19 +62,42 @@ const switchMode = (value: Mode) => {
   isSubmitting.value = false
 }
 
-const handleSubmit = () => {
+const handleSubmit = async () => {
   resetFeedback()
 
   if (mode.value === 'login') {
     if (!loginForm.email || !loginForm.password) return
 
     isSubmitting.value = true
+    try {
+      const user = await authenticateUser({ email: loginForm.email, password: loginForm.password })
 
-    setTimeout(() => {
-      authStore.login(loginForm.email)
-      isSubmitting.value = false
+      if (!user) {
+        showToast({
+          title: 'No pudimos iniciar sesión',
+          message: 'Verifica tus datos e intenta nuevamente.',
+          variant: 'warning',
+        })
+        return
+      }
+
+      authStore.login(user)
       router.push('/productos')
-    }, 600)
+      showToast({
+        title: '¡Bienvenido de vuelta!',
+        message: 'Tu sesión se inició correctamente.',
+        variant: 'success',
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No fue posible iniciar sesión.'
+      showToast({
+        title: 'No pudimos iniciar sesión',
+        message,
+        variant: 'danger',
+      })
+    } finally {
+      isSubmitting.value = false
+    }
     return
   }
 
@@ -95,13 +121,41 @@ const handleSubmit = () => {
 
   isSubmitting.value = true
 
-  setTimeout(() => {
+  try {
+    const user = await registerUser({
+      firstName: registerForm.firstName,
+      lastName: registerForm.lastName,
+      email: registerForm.email,
+      password: registerForm.password,
+      phone: registerForm.phone || undefined,
+    })
+
+    if (!user) {
+      showToast({
+        title: 'No se pudo crear el usuario',
+        message: 'Inténtalo nuevamente en unos minutos.',
+        variant: 'danger',
+      })
+      return
+    }
+
+    authStore.login(user)
+    showToast({
+      title: '¡Bienvenido a Larmone!',
+      message: 'Creamos tu cuenta y abrimos tu sesión.',
+      variant: 'success',
+    })
+    router.push('/productos')
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'No fue posible crear tu cuenta.'
+    showToast({
+      title: 'No se pudo crear el usuario',
+      message,
+      variant: 'danger',
+    })
+  } finally {
     isSubmitting.value = false
-    feedbackMessage.value = '¡Tu cuenta ha sido creada! Ahora puedes iniciar sesión.'
-    feedbackType.value = 'success'
-    switchMode('login')
-    loginForm.email = registerForm.email
-  }, 800)
+  }
 }
 </script>
 
