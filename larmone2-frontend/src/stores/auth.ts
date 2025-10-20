@@ -41,12 +41,38 @@ const loadStoredState = (): AuthState => {
               if (!email) {
                 return null
               }
+              const nombre = typeof rawUser.nombre === 'string' ? rawUser.nombre : undefined
+              let firstName = typeof rawUser.firstName === 'string' ? rawUser.firstName : undefined
+              let lastName = typeof rawUser.lastName === 'string' ? rawUser.lastName : undefined
+
+              if (nombre) {
+                const [first, ...rest] = nombre
+                  .split(/\s+/)
+                  .map((segment) => segment.trim())
+                  .filter((segment) => segment.length > 0)
+
+                if (first && !firstName) {
+                  firstName = first
+                }
+
+                if (rest.length > 0 && !lastName) {
+                  lastName = rest.join(' ')
+                }
+              }
+
+              const phone =
+                typeof rawUser.phone === 'string'
+                  ? rawUser.phone
+                  : typeof rawUser.telefono === 'string'
+                    ? rawUser.telefono
+                    : undefined
+
               return {
                 email,
                 id: typeof rawUser.id === 'string' ? rawUser.id : undefined,
-                firstName: typeof rawUser.firstName === 'string' ? rawUser.firstName : undefined,
-                lastName: typeof rawUser.lastName === 'string' ? rawUser.lastName : undefined,
-                phone: typeof rawUser.phone === 'string' ? rawUser.phone : undefined,
+                firstName,
+                lastName,
+                phone,
               }
             })()
           : null,
