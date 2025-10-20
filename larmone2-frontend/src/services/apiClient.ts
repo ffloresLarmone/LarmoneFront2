@@ -102,11 +102,76 @@ export async function pingBackend(): Promise<boolean> {
   return false
 }
 
-async function safeParseError(response: Response): Promise<string> {
-  try {
-    const data = await response.json()
-    return data?.message ?? response.statusText
-  } catch (error) {
-    return response.statusText
+const GENERIC_ERROR_MESSAGE = 'No pudimos procesar tu solicitud. Inténtalo nuevamente en unos minutos.'
+
+function extractMessage(payload: unknown): string | null {
+  if (!payload) {
+    return null
   }
+
+  if (typeof payload === 'string') {
+    const trimmed = payload.trim()
+    return trimmed.length > 0 ? trimmed : null
+  }
+
+  if (Array.isArray(payload)) {
+    const messages = payload
+      .map((item) => extractMessage(item))
+      .filter((message): message is string => typeof message === 'string' && message.length > 0)
+    if (messages.length > 0) {
+      return messages.join(' ')
+    }
+    return null
+  }
+
+  if (typeof payload === 'object') {
+    const record = payload as Record<string, unknown>
+    const candidates = ['message', 'msg', 'error', 'detail', 'title', 'descripcion', 'description']
+
+    for (const key of candidates) {
+      if (key in record) {
+        const message = extractMessage(record[key])
+        if (message) {
+          return message
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+async function safeParseError(response: Response): Promise<string> {
+  let raw = ''
+
+  try {
+    raw = await response.text()
+  } catch (error) {
+    return response.statusText || GENERIC_ERROR_MESSAGE
+  }
+
+  if (raw.length === 0) {
+    return response.statusText || GENERIC_ERROR_MESSAGE
+  }
+
+  const contentType = response.headers.get('content-type') ?? ''
+
+  if (contentType.includes('application/json')) {
+    try {
+      const data = JSON.parse(raw)
+      const message = extractMessage(data)
+      if (message) {
+        return message
+      }
+    } catch (error) {
+      // Continuamos con el texto plano
+    }
+  }
+
+  const fallback = raw.trim()
+  if (fallback.length > 0) {
+    return fallback
+  }
+
+  return response.statusText || GENERIC_ERROR_MESSAGE
 }
