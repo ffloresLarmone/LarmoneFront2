@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { RouterLink, type RouteLocationRaw } from 'vue-router'
+import { RouterLink, useRouter, type RouteLocationRaw } from 'vue-router'
 import SearchBar from '../molecules/SearchBar.vue'
 import { useAuthStore } from '../../stores/auth'
 import { useCheckoutStore } from '../../stores/checkout'
@@ -14,6 +14,7 @@ const emit = defineEmits<{ (event: 'search', query: string): void }>()
 
 const authStore = useAuthStore()
 const checkoutStore = useCheckoutStore()
+const router = useRouter()
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const userEmail = computed(() => authStore.user?.email ?? '')
 
@@ -30,6 +31,9 @@ const handleSearch = (query: string) => {
 const handleLogout = () => {
   authStore.logout()
   checkoutStore.clear()
+  router.push({ name: 'home' }).catch(() => {
+    // Ignoramos errores de navegación duplicada
+  })
 }
 </script>
 
