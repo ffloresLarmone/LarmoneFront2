@@ -221,6 +221,22 @@ const badgeClassForEstado = (estado: string | undefined | null) => {
   return map[normalized] ?? 'text-bg-secondary'
 }
 
+const obtenerIdProducto = (producto?: Producto | null): string | null => {
+  if (!producto) {
+    return null
+  }
+
+  const id = typeof producto.id === 'string' ? producto.id.trim() : ''
+  if (id.length > 0) {
+    return id
+  }
+
+  const legacyId =
+    typeof producto.id_producto === 'string' ? producto.id_producto.trim() : ''
+
+  return legacyId.length > 0 ? legacyId : null
+}
+
 const resetProductoForm = () => {
   productoForm.nombre = ''
   productoForm.slug = ''
@@ -409,7 +425,7 @@ const prepararNuevoProducto = () => {
 
 const rellenarFormularioProducto = (producto: Producto) => {
   productoEnEdicion.value = producto
-  productoSeleccionado.value = producto.id
+  productoSeleccionado.value = obtenerIdProducto(producto)
   mostrarFormularioProducto.value = true
   productoForm.nombre = producto.nombre ?? ''
   productoForm.slug = producto.slug ?? ''
@@ -473,11 +489,14 @@ const cerrarModalImagenes = async () => {
 
 const refrescarMetricasProductosActivos = async () => {
   try {
-    const respuesta = await fetchProducts({
-      page: 1,
-      pageSize: 1,
-      soloActivos: true,
-    })
+    const respuesta = await fetchProducts(
+      {
+        page: 1,
+        pageSize: 1,
+        soloActivos: true,
+      },
+      { admin: true },
+    )
     totalProductosActivos.value = respuesta.total
   } catch (error) {
     console.error('No fue posible actualizar la métrica de productos activos', error)
@@ -497,7 +516,7 @@ const cargarProductos = async (page = productosPagination.page) => {
       params.q = productoFilters.q.trim()
     }
 
-    const respuesta = await fetchProducts(params)
+    const respuesta = await fetchProducts(params, { admin: true })
     const items = await mapearProductosConImagenes(respuesta.items)
     productos.value = items
     productosPagination.page = respuesta.page
@@ -510,9 +529,12 @@ const cargarProductos = async (page = productosPagination.page) => {
     }
 
     if (productoEnEdicion.value) {
-      const actualizado = items.find((item) => item.id === productoEnEdicion.value?.id)
-      if (actualizado) {
-        rellenarFormularioProducto(actualizado)
+      const idEnEdicion = obtenerIdProducto(productoEnEdicion.value)
+      if (idEnEdicion) {
+        const actualizado = items.find((item) => obtenerIdProducto(item) === idEnEdicion)
+        if (actualizado) {
+          rellenarFormularioProducto(actualizado)
+        }
       }
     }
   } catch (error) {
@@ -559,9 +581,9 @@ const buscarProductoPorIdentificador = async () => {
   try {
     let producto: Producto
     try {
-      producto = await fetchProductById(productoSeleccionado.value)
+      producto = await fetchProductById(productoSeleccionado.value, { admin: true })
     } catch (error) {
-      producto = await fetchProductBySlug(productoSeleccionado.value)
+      producto = await fetchProductBySlug(productoSeleccionado.value, { admin: true })
     }
     rellenarFormularioProducto(producto)
     productFormSuccess.value = 'Producto cargado correctamente desde la API.'
@@ -634,10 +656,14 @@ const onSubmitProducto = async () => {
   try {
     let respuesta: Producto
     if (productoEnEdicion.value) {
-      respuesta = await updateProduct(productoEnEdicion.value.id, payload)
+      const productoId = obtenerIdProducto(productoEnEdicion.value)
+      if (!productoId) {
+        throw new Error('No fue posible determinar el identificador del producto a actualizar.')
+      }
+      respuesta = await updateProduct(productoId, payload, { admin: true })
       productFormSuccess.value = 'Producto actualizado correctamente.'
     } else {
-      respuesta = await createProduct(payload)
+      respuesta = await createProduct(payload, { admin: true })
       productFormSuccess.value = 'Producto creado correctamente.'
     }
 
@@ -660,6 +686,12 @@ const desactivarProducto = async (producto: Producto) => {
     return
   }
 
+  const productoId = obtenerIdProducto(producto)
+  if (!productoId) {
+    productFormError.value = 'No fue posible determinar el identificador del producto seleccionado.'
+    return
+  }
+
   const confirmar = window.confirm(
     `¿Deseas desactivar el producto "${producto.nombre}"? Esta acción ocultará el producto del catálogo.`,
   )
@@ -667,14 +699,14 @@ const desactivarProducto = async (producto: Producto) => {
     return
   }
 
-  productoOperacionEnCurso.value = producto.id
+  productoOperacionEnCurso.value = productoId
   productFormError.value = ''
   productFormSuccess.value = ''
 
   try {
-    const respuesta = await deactivateProduct(producto.id)
+    const respuesta = await deactivateProduct(productoId, { admin: true })
     productFormSuccess.value = `Producto "${respuesta.nombre}" desactivado correctamente.`
-    if (productoEnEdicion.value?.id === producto.id) {
+    if (obtenerIdProducto(productoEnEdicion.value) === productoId) {
       productoEnEdicion.value = { ...productoEnEdicion.value, activo: false }
       productoForm.activo = false
     }

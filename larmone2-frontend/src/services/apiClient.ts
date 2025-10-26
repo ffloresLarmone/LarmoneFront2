@@ -193,6 +193,15 @@ export function setTokenProvider(provider?: TokenProvider) {
   }
 }
 
+const ADMIN_ROLE_HEADER = 'X-User-Role'
+const ADMIN_ROLE_VALUE = 'ADMIN'
+
+export function withAdminRole(options: RequestInit = {}): RequestInit {
+  const headers = normalizeHeaders(options.headers)
+  headers[ADMIN_ROLE_HEADER] = ADMIN_ROLE_VALUE
+  return { ...options, headers }
+}
+
 export async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   return client.request<T>(url, options)
 }

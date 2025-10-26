@@ -29,6 +29,7 @@ export interface ProductoRatingResumen {
 
 export interface Producto {
   id: string
+  id_producto?: string
   sku: string
   nombre: string
   slug: string
