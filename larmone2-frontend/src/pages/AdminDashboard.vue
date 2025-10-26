@@ -6,6 +6,7 @@ import type {
   CrearProductoPayload,
   Producto,
   ProductoAtributo,
+  ProductoAtributosJson,
   ProductoCategoriaResumen,
   Venta,
 } from '../types/api'
@@ -111,9 +112,11 @@ const mostrarModalImagenes = ref(false)
 const productoForm = reactive({
   nombre: '',
   slug: '',
-  descripcion: '',
-  marca: '',
-  skuBase: '',
+  descripcionCorta: '',
+  descripcionLarga: '',
+  marcaId: '',
+  tasaImpuestoId: '',
+  sku: '',
   precio: '',
   activo: true,
   destacado: false,
@@ -221,9 +224,11 @@ const badgeClassForEstado = (estado: string | undefined | null) => {
 const resetProductoForm = () => {
   productoForm.nombre = ''
   productoForm.slug = ''
-  productoForm.descripcion = ''
-  productoForm.marca = ''
-  productoForm.skuBase = ''
+  productoForm.descripcionCorta = ''
+  productoForm.descripcionLarga = ''
+  productoForm.marcaId = ''
+  productoForm.tasaImpuestoId = ''
+  productoForm.sku = ''
   productoForm.precio = ''
   productoForm.activo = true
   productoForm.destacado = false
@@ -250,13 +255,45 @@ const parseCategorias = (texto: string): string[] => {
     .filter((segmento) => segmento.length > 0)
 }
 
-const serializarAtributos = (atributos?: ProductoAtributo[]): string => {
-  if (!atributos?.length) {
+const serializarAtributos = (
+  atributos?: ProductoAtributo[] | ProductoAtributosJson | null,
+): string => {
+  if (!atributos) {
     return ''
   }
-  return atributos
-    .map((atributo) => `${atributo.clave} = ${atributo.valor}`)
+
+  if (Array.isArray(atributos)) {
+    if (!atributos.length) {
+      return ''
+    }
+    return atributos
+      .map((atributo) => `${atributo.clave} = ${atributo.valor}`)
+      .join('\n')
+  }
+
+  const entries = Object.entries(atributos)
+  if (!entries.length) {
+    return ''
+  }
+
+  return entries
+    .map(([clave, valor]) => `${clave} = ${formatearValorAtributo(valor)}`)
     .join('\n')
+}
+
+const formatearValorAtributo = (valor: unknown): string => {
+  if (valor === null || valor === undefined) {
+    return ''
+  }
+  if (typeof valor === 'object') {
+    try {
+      return JSON.stringify(valor)
+    } catch (error) {
+      console.warn('No fue posible serializar el atributo como JSON', error)
+      return String(valor)
+    }
+  }
+  return String(valor)
 }
 
 const parseAtributos = (texto: string): ProductoAtributo[] => {
@@ -282,6 +319,40 @@ const parseAtributos = (texto: string): ProductoAtributo[] => {
       }
     })
     .filter((atributo): atributo is ProductoAtributo => atributo !== null)
+}
+
+const atributosArrayToJson = (
+  atributos: ProductoAtributo[],
+): ProductoAtributosJson | undefined => {
+  if (!atributos.length) {
+    return undefined
+  }
+
+  const json: ProductoAtributosJson = {}
+  atributos.forEach(({ clave, valor }) => {
+    if (!clave) {
+      return
+    }
+    const trimmedValue = valor.trim()
+    if (!trimmedValue) {
+      return
+    }
+
+    if (/^(true|false)$/i.test(trimmedValue)) {
+      json[clave] = trimmedValue.toLowerCase() === 'true'
+      return
+    }
+
+    const numericValue = Number(trimmedValue)
+    if (!Number.isNaN(numericValue) && trimmedValue !== '') {
+      json[clave] = numericValue
+      return
+    }
+
+    json[clave] = trimmedValue
+  })
+
+  return Object.keys(json).length > 0 ? json : undefined
 }
 
 const limpiarPayload = <T extends Record<string, unknown>>(payload: T): T => {
@@ -317,9 +388,14 @@ const parsearNumeroOpcional = (valor: unknown): number | undefined => {
   return Number.isFinite(numero) ? numero : undefined
 }
 
-const parsearNumeroRequerido = (valor: unknown): number | null => {
-  const numero = parsearNumeroOpcional(valor)
-  return typeof numero === 'number' ? numero : null
+const parsearEnteroOpcional = (valor: unknown): number | undefined => {
+  const normalizado = normalizarTexto(valor)
+  if (!normalizado) {
+    return undefined
+  }
+
+  const numero = Number.parseInt(normalizado, 10)
+  return Number.isNaN(numero) ? undefined : numero
 }
 
 const prepararNuevoProducto = () => {
@@ -337,9 +413,18 @@ const rellenarFormularioProducto = (producto: Producto) => {
   mostrarFormularioProducto.value = true
   productoForm.nombre = producto.nombre ?? ''
   productoForm.slug = producto.slug ?? ''
-  productoForm.descripcion = producto.descripcion ?? ''
-  productoForm.marca = producto.marca ?? ''
-  productoForm.skuBase = producto.skuBase ?? ''
+  productoForm.descripcionCorta = producto.descripcionCorta ?? ''
+  productoForm.descripcionLarga =
+    producto.descripcionLarga ?? producto.descripcion ?? ''
+  productoForm.marcaId =
+    typeof producto.marcaId === 'number' && Number.isFinite(producto.marcaId)
+      ? producto.marcaId.toString()
+      : ''
+  productoForm.tasaImpuestoId =
+    typeof producto.tasaImpuestoId === 'number' && Number.isFinite(producto.tasaImpuestoId)
+      ? producto.tasaImpuestoId.toString()
+      : ''
+  productoForm.sku = producto.sku ?? producto.skuBase ?? ''
   productoForm.precio = typeof producto.precio === 'number' ? producto.precio.toString() : ''
   productoForm.activo = producto.activo ?? true
   productoForm.destacado = producto.destacado ?? false
@@ -352,7 +437,9 @@ const rellenarFormularioProducto = (producto: Producto) => {
       ? producto.volumenMl.toString()
       : ''
   productoForm.categoriasTexto = serializarCategorias(producto.categorias)
-  productoForm.atributosTexto = serializarAtributos(producto.atributos)
+  productoForm.atributosTexto = serializarAtributos(
+    producto.atributos ?? producto.atributosJson ?? null,
+  )
   productFormSuccess.value = ''
   productFormError.value = ''
 }
@@ -494,10 +581,12 @@ const onSubmitProducto = async () => {
 
   const nombre = normalizarTexto(productoForm.nombre)
   const slug = normalizarTexto(productoForm.slug)
-  const descripcion = normalizarTexto(productoForm.descripcion)
-  const marca = normalizarTexto(productoForm.marca)
-  const skuBase = normalizarTexto(productoForm.skuBase)
-  const precio = parsearNumeroRequerido(productoForm.precio)
+  const descripcionCorta = normalizarTexto(productoForm.descripcionCorta)
+  const descripcionLarga = normalizarTexto(productoForm.descripcionLarga)
+  const sku = normalizarTexto(productoForm.sku)
+  const marcaId = parsearEnteroOpcional(productoForm.marcaId)
+  const tasaImpuestoId = parsearEnteroOpcional(productoForm.tasaImpuestoId)
+  const precio = parsearNumeroOpcional(productoForm.precio)
   const pesoGramos = parsearNumeroOpcional(productoForm.pesoGramos)
   const volumenMl = parsearNumeroOpcional(productoForm.volumenMl)
 
@@ -509,20 +598,29 @@ const onSubmitProducto = async () => {
     productFormError.value = 'El slug del producto es obligatorio.'
     return
   }
-  if (precio === null) {
-    productFormError.value = 'Debes ingresar un precio válido.'
+  if (!sku) {
+    productFormError.value = 'El SKU del producto es obligatorio.'
+    return
+  }
+  if (productoForm.precio.trim().length > 0 && precio === undefined) {
+    productFormError.value = 'El precio ingresado no es válido.'
     return
   }
 
   const categorias = parseCategorias(productoForm.categoriasTexto)
   const atributos = parseAtributos(productoForm.atributosTexto)
 
+  const atributosJson = atributosArrayToJson(atributos)
+
   const payloadBase: CrearProductoPayload = {
+    sku,
     nombre,
     slug,
-    descripcion: descripcion || undefined,
-    marca: marca || undefined,
-    skuBase: skuBase || undefined,
+    descripcion: descripcionLarga || undefined,
+    descripcionCorta: descripcionCorta || undefined,
+    descripcionLarga: descripcionLarga || undefined,
+    marcaId,
+    tasaImpuestoId,
     precio,
     activo: productoForm.activo,
     destacado: productoForm.destacado,
@@ -530,6 +628,7 @@ const onSubmitProducto = async () => {
     volumenMl,
     categorias: categorias.length ? categorias : undefined,
     atributos: atributos.length ? atributos : undefined,
+    atributosJson,
   }
 
   const payload = limpiarPayload(payloadBase)
@@ -942,27 +1041,50 @@ onMounted(async () => {
                         />
                       </div>
                       <div class="col-12">
-                        <label class="form-label">Descripción</label>
+                        <label class="form-label">Descripción corta</label>
                         <textarea
                           class="form-control"
-                          rows="3"
-                          placeholder="Detalle del producto"
-                          v-model="productoForm.descripcion"
+                          rows="2"
+                          placeholder="Resumen para listar el producto"
+                          v-model="productoForm.descripcionCorta"
+                        ></textarea>
+                      </div>
+                      <div class="col-12">
+                        <label class="form-label">Descripción larga</label>
+                        <textarea
+                          class="form-control"
+                          rows="4"
+                          placeholder="Detalle completo del producto"
+                          v-model="productoForm.descripcionLarga"
                         ></textarea>
                       </div>
                       <div class="col-12 col-md-6">
-                        <label class="form-label">Marca</label>
-                        <input type="text" class="form-control" v-model="productoForm.marca" />
+                        <label class="form-label">SKU</label>
+                        <input type="text" class="form-control" v-model="productoForm.sku" required />
                       </div>
                       <div class="col-12 col-md-6">
-                        <label class="form-label">SKU base</label>
-                        <input type="text" class="form-control" v-model="productoForm.skuBase" />
+                        <label class="form-label">Marca (ID)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          class="form-control"
+                          v-model="productoForm.marcaId"
+                        />
+                      </div>
+                      <div class="col-12 col-md-6">
+                        <label class="form-label">Tasa de impuesto (ID)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          class="form-control"
+                          v-model="productoForm.tasaImpuestoId"
+                        />
                       </div>
                       <div class="col-12 col-md-6">
                         <label class="form-label">Precio</label>
                         <div class="input-group">
                           <span class="input-group-text">$</span>
-                          <input type="number" min="0" class="form-control" v-model="productoForm.precio" required />
+                          <input type="number" min="0" class="form-control" v-model="productoForm.precio" />
                         </div>
                       </div>
                       <div class="col-12 col-md-6">
@@ -1091,7 +1213,7 @@ onMounted(async () => {
                                   />
                                   <div>
                                     <p class="fw-semibold mb-0">{{ producto.nombre }}</p>
-                                    <small class="text-muted">SKU: {{ producto.skuBase || '—' }}</small>
+                                    <small class="text-muted">SKU: {{ producto.sku || '—' }}</small>
                                   </div>
                                 </div>
                               </td>

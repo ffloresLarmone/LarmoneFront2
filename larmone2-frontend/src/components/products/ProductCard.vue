@@ -84,7 +84,14 @@ async function onAddToCart() {
     </div>
     <div class="product-body d-flex flex-column flex-grow-1">
       <h5 class="product-title mb-1">{{ producto.nombre }}</h5>
-      <small class="text-muted">{{ producto.marca || `Slug: ${producto.slug}` }}</small>
+      <small class="text-muted">
+        {{
+          producto.marca ||
+            (typeof producto.marcaId === 'number'
+              ? `Marca #${producto.marcaId}`
+              : `SKU: ${producto.sku || producto.slug}`)
+        }}
+      </small>
       <p class="product-price mb-2">{{ formattedPrice }}</p>
       <div class="mt-2 flex-grow-1">
         <span class="badge status-pill" :class="producto.activo ? 'status-available' : 'status-unavailable'">

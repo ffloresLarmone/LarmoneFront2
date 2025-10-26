@@ -41,7 +41,13 @@
           <div class="detail-info">
             <h1 class="product-name">{{ producto.nombre }}</h1>
             <p class="text-muted mb-1">Slug: {{ producto.slug }}</p>
-            <p v-if="producto.marca" class="text-muted mb-3">Marca: {{ producto.marca }}</p>
+            <p v-if="producto.sku" class="text-muted mb-1">SKU: {{ producto.sku }}</p>
+            <p
+              v-if="producto.marca || typeof producto.marcaId === 'number'"
+              class="text-muted mb-3"
+            >
+              Marca: {{ producto.marca ?? `#${producto.marcaId}` }}
+            </p>
             <p v-if="formattedPrice" class="product-price">{{ formattedPrice }}</p>
             <div class="badge-status mb-4">
               <span class="badge" :class="producto.activo ? 'bg-success-soft' : 'bg-secondary-soft'">
@@ -50,7 +56,8 @@
             </div>
             <p class="description">
               {{
-                producto.descripcion ||
+                producto.descripcionLarga ||
+                  producto.descripcion ||
                   producto.descripcionCorta ||
                   'Descubre todos los detalles de este lanzamiento exclusivo directamente en nuestro catálogo.'
               }}
@@ -101,8 +108,9 @@ const { loading: cartLoading } = storeToRefs(cartStore)
 const { showToast } = useToast()
 
 const formattedCreatedAt = computed(() => {
-  if (!producto.value?.createdAt) return 'Sin registro'
-  const date = new Date(producto.value.createdAt)
+  const timestamp = producto.value?.creadoEn ?? producto.value?.createdAt
+  if (!timestamp) return 'Sin registro'
+  const date = new Date(timestamp)
   return new Intl.DateTimeFormat('es-CL', {
     year: 'numeric',
     month: 'long',
