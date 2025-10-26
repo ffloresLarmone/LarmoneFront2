@@ -103,6 +103,7 @@ const productoSeleccionadoModel = computed<string>({
 const mostrarFormularioProducto = ref(false)
 const formularioProductoVisible = computed(() => mostrarFormularioProducto.value || productoEnEdicion.value !== null)
 const esModoEdicionProducto = computed(() => productoEnEdicion.value !== null)
+const productoFormSubmitLabel = computed(() => (esModoEdicionProducto.value ? 'Guardar cambios' : 'Agregar'))
 
 const productoParaImagenes = ref<Producto | null>(null)
 const mostrarModalImagenes = ref(false)
@@ -293,6 +294,16 @@ const limpiarPayload = <T extends Record<string, unknown>>(payload: T): T => {
   return limpio as T
 }
 
+const obtenerTextoNormalizado = (valor: unknown): string => {
+  if (typeof valor === 'string') {
+    return valor.trim()
+  }
+  if (typeof valor === 'number') {
+    return Number.isFinite(valor) ? valor.toString() : ''
+  }
+  return ''
+}
+
 const prepararNuevoProducto = () => {
   productoEnEdicion.value = null
   productoSeleccionado.value = null
@@ -463,12 +474,20 @@ const onSubmitProducto = async () => {
   productFormError.value = ''
   productFormSuccess.value = ''
 
-  const precio = Number(productoForm.precio)
-  if (!productoForm.nombre.trim()) {
+  const nombre = obtenerTextoNormalizado(productoForm.nombre)
+  const slug = obtenerTextoNormalizado(productoForm.slug)
+  const descripcion = obtenerTextoNormalizado(productoForm.descripcion)
+  const marca = obtenerTextoNormalizado(productoForm.marca)
+  const skuBase = obtenerTextoNormalizado(productoForm.skuBase)
+  const precio = Number(obtenerTextoNormalizado(productoForm.precio))
+  const pesoGramosTexto = obtenerTextoNormalizado(productoForm.pesoGramos)
+  const volumenMlTexto = obtenerTextoNormalizado(productoForm.volumenMl)
+
+  if (!nombre) {
     productFormError.value = 'El nombre del producto es obligatorio.'
     return
   }
-  if (!productoForm.slug.trim()) {
+  if (!slug) {
     productFormError.value = 'El slug del producto es obligatorio.'
     return
   }
@@ -481,22 +500,16 @@ const onSubmitProducto = async () => {
   const atributos = parseAtributos(productoForm.atributosTexto)
 
   const payloadBase: CrearProductoPayload = {
-    nombre: productoForm.nombre.trim(),
-    slug: productoForm.slug.trim(),
-    descripcion: productoForm.descripcion.trim() || undefined,
-    marca: productoForm.marca.trim() || undefined,
-    skuBase: productoForm.skuBase.trim() || undefined,
+    nombre,
+    slug,
+    descripcion: descripcion || undefined,
+    marca: marca || undefined,
+    skuBase: skuBase || undefined,
     precio,
     activo: productoForm.activo,
     destacado: productoForm.destacado,
-    pesoGramos:
-      productoForm.pesoGramos.trim().length > 0
-        ? Number(productoForm.pesoGramos)
-        : undefined,
-    volumenMl:
-      productoForm.volumenMl.trim().length > 0
-        ? Number(productoForm.volumenMl)
-        : undefined,
+    pesoGramos: pesoGramosTexto.length > 0 ? Number(pesoGramosTexto) : undefined,
+    volumenMl: volumenMlTexto.length > 0 ? Number(volumenMlTexto) : undefined,
     categorias: categorias.length ? categorias : undefined,
     atributos: atributos.length ? atributos : undefined,
   }
@@ -998,7 +1011,7 @@ onMounted(async () => {
                             role="status"
                             aria-hidden="true"
                           ></span>
-                          Guardar cambios
+                          {{ productoFormSubmitLabel }}
                         </button>
                         <button type="button" class="btn btn-outline-secondary" @click="cerrarFormularioProducto">
                           Cancelar
