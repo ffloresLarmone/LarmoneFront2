@@ -1,21 +1,22 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppButton from '../components/atoms/AppButton.vue'
+import AppToast from '../components/atoms/AppToast.vue'
 import { useAuthStore } from '../stores/auth'
-import { useToast } from '../composables/useToast'
 import { authenticateUser, registerUser } from '../services/authService'
 
 type Mode = 'login' | 'register'
 
 const router = useRouter()
 const authStore = useAuthStore()
-const { showToast } = useToast()
 
 const mode = ref<Mode>('login')
 const isSubmitting = ref(false)
-const feedbackMessage = ref('')
-const feedbackType = ref<'success' | 'error' | ''>('')
+const toastMessage = ref('')
+const toastType = ref<1 | 2>(2)
+const isToastVisible = ref(false)
+let toastTimeout: ReturnType<typeof setTimeout> | undefined
 
 const loginForm = reactive({
   email: '',
@@ -51,9 +52,38 @@ const complementaryText = computed(() =>
 const complementaryLinkLabel = computed(() => (mode.value === 'login' ? 'Regístrate aquí' : 'Inicia sesión'))
 
 const resetFeedback = () => {
-  feedbackMessage.value = ''
-  feedbackType.value = ''
+  hideToast()
 }
+
+const showFeedbackToast = (message: string, type: 1 | 2) => {
+  if (toastTimeout) {
+    clearTimeout(toastTimeout)
+  }
+
+  toastMessage.value = message
+  toastType.value = type
+  isToastVisible.value = true
+
+  toastTimeout = setTimeout(() => {
+    hideToast()
+  }, 4000)
+}
+
+const hideToast = () => {
+  if (toastTimeout) {
+    clearTimeout(toastTimeout)
+    toastTimeout = undefined
+  }
+
+  isToastVisible.value = false
+  toastMessage.value = ''
+}
+
+onUnmounted(() => {
+  if (toastTimeout) {
+    clearTimeout(toastTimeout)
+  }
+})
 
 const switchMode = (value: Mode) => {
   if (mode.value === value) return
@@ -73,28 +103,16 @@ const handleSubmit = async () => {
       const user = await authenticateUser({ email: loginForm.email, password: loginForm.password })
 
       if (!user) {
-        showToast({
-          title: 'No pudimos iniciar sesión',
-          message: 'Verifica tus datos e intenta nuevamente.',
-          variant: 'warning',
-        })
+        showFeedbackToast('Verifica tus datos e intenta nuevamente.', 1)
         return
       }
 
       authStore.login(user)
       router.push('/productos')
-      showToast({
-        title: '¡Bienvenido de vuelta!',
-        message: 'Tu sesión se inició correctamente.',
-        variant: 'success',
-      })
+      showFeedbackToast('Tu sesión se inició correctamente.', 2)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No fue posible iniciar sesión.'
-      showToast({
-        title: 'No pudimos iniciar sesión',
-        message,
-        variant: 'danger',
-      })
+      showFeedbackToast(message, 1)
     } finally {
       isSubmitting.value = false
     }
@@ -102,20 +120,17 @@ const handleSubmit = async () => {
   }
 
   if (!registerForm.firstName || !registerForm.lastName || !registerForm.email || !registerForm.password) {
-    feedbackMessage.value = 'Por favor completa todos los campos requeridos.'
-    feedbackType.value = 'error'
+    showFeedbackToast('Por favor completa todos los campos requeridos.', 1)
     return
   }
 
   if (registerForm.password !== registerForm.confirmPassword) {
-    feedbackMessage.value = 'Las contraseñas no coinciden. Intenta nuevamente.'
-    feedbackType.value = 'error'
+    showFeedbackToast('Las contraseñas no coinciden. Intenta nuevamente.', 1)
     return
   }
 
   if (!registerForm.acceptTerms) {
-    feedbackMessage.value = 'Debes aceptar los términos y condiciones para continuar.'
-    feedbackType.value = 'error'
+    showFeedbackToast('Debes aceptar los términos y condiciones para continuar.', 1)
     return
   }
 
@@ -131,28 +146,16 @@ const handleSubmit = async () => {
     })
 
     if (!user) {
-      showToast({
-        title: 'No se pudo crear el usuario',
-        message: 'Inténtalo nuevamente en unos minutos.',
-        variant: 'danger',
-      })
+      showFeedbackToast('Inténtalo nuevamente en unos minutos.', 1)
       return
     }
 
     authStore.login(user)
-    showToast({
-      title: '¡Bienvenido a Larmone!',
-      message: 'Creamos tu cuenta y abrimos tu sesión.',
-      variant: 'success',
-    })
+    showFeedbackToast('Creamos tu cuenta y abrimos tu sesión.', 2)
     router.push('/productos')
   } catch (error) {
     const message = error instanceof Error ? error.message : 'No fue posible crear tu cuenta.'
-    showToast({
-      title: 'No se pudo crear el usuario',
-      message,
-      variant: 'danger',
-    })
+    showFeedbackToast(message, 1)
   } finally {
     isSubmitting.value = false
   }
@@ -162,6 +165,7 @@ const handleSubmit = async () => {
 <template>
   <section class="login-page py-5 py-lg-6">
     <div class="container">
+      <AppToast :show="isToastVisible" :message="toastMessage" :type="toastType" @close="hideToast" />
       <div class="row justify-content-center align-items-center g-5">
         <div class="col-12 col-lg-6 d-none d-lg-block">
           <div class="login-hero rounded-4 p-5 text-white shadow-lg">
@@ -313,11 +317,6 @@ const handleSubmit = async () => {
                     </div>
                   </div>
                 </template>
-
-                <div v-if="feedbackMessage" class="alert" :class="feedbackType === 'success' ? 'alert-success' : 'alert-danger'">
-                  {{ feedbackMessage }}
-                </div>
-
                 <AppButton :disabled="isSubmitting" type="submit" :label="submitLabel" size="lg" />
               </form>
               <p class="text-center text-muted mt-4 mb-0 small">
