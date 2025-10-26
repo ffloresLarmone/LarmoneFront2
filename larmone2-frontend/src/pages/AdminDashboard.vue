@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import ProductImageManager from '../components/products/ProductImageManager.vue'
+import ProductImagesModal from '../components/products/ProductImagesModal.vue'
 import type {
   ActualizarEnvioEstadoPayload,
   CrearProductoPayload,
-  ImagenProducto,
   Producto,
   ProductoAtributo,
   ProductoCategoriaResumen,
@@ -19,7 +18,7 @@ import {
   updateProduct,
   type FetchProductsParams,
 } from '../services/productService'
-import { mapearProductosConImagenes, normalizarImagenes } from '../services/imageService'
+import { mapearProductosConImagenes } from '../services/imageService'
 import {
   cancelVenta,
   fetchVentas,
@@ -101,6 +100,13 @@ const productoSeleccionadoModel = computed<string>({
   },
 })
 
+const mostrarFormularioProducto = ref(false)
+const formularioProductoVisible = computed(() => mostrarFormularioProducto.value || productoEnEdicion.value !== null)
+const esModoEdicionProducto = computed(() => productoEnEdicion.value !== null)
+
+const productoParaImagenes = ref<Producto | null>(null)
+const mostrarModalImagenes = ref(false)
+
 const productoForm = reactive({
   nombre: '',
   slug: '',
@@ -113,19 +119,11 @@ const productoForm = reactive({
   pesoGramos: '',
   volumenMl: '',
   categoriasTexto: '',
-  imagenesTexto: '',
   atributosTexto: '',
 })
 const productFormSubmitting = ref(false)
 const productFormSuccess = ref('')
 const productFormError = ref('')
-
-const imagenesProducto = ref<ImagenProducto[]>([])
-const resumenImagenes = computed(() => {
-  const total = imagenesProducto.value.length
-  if (!total) return ''
-  return `${total} ${total === 1 ? 'imagen' : 'imágenes'} registradas`
-})
 
 const ventas = ref<Venta[]>([])
 const ventasLoading = ref(false)
@@ -231,7 +229,6 @@ const resetProductoForm = () => {
   productoForm.pesoGramos = ''
   productoForm.volumenMl = ''
   productoForm.categoriasTexto = ''
-  productoForm.imagenesTexto = ''
   productoForm.atributosTexto = ''
 }
 
@@ -250,54 +247,6 @@ const parseCategorias = (texto: string): string[] => {
     .split(/[;,\n]/)
     .map((segmento) => segmento.trim())
     .filter((segmento) => segmento.length > 0)
-}
-
-const serializarImagenes = (imagenes?: ImagenProducto[]): string => {
-  if (!imagenes?.length) {
-    return ''
-  }
-  return imagenes
-    .map((imagen) => {
-      const partes: string[] = []
-      if (imagen.url) {
-        partes.push(imagen.url)
-      }
-      if (imagen.alt) {
-        partes.push(imagen.alt)
-      }
-      if (imagen.principal) {
-        partes.push('principal')
-      }
-      return partes.join(' | ')
-    })
-    .join('\n')
-}
-
-const parseImagenes = (texto: string): ImagenProducto[] => {
-  const lineas = texto
-    .split(/\n+/)
-    .map((linea) => linea.trim())
-    .filter((linea) => linea.length > 0)
-
-  const coincidencias = ['principal', 'principal *', 'true', '1', 'sí', 'si', 'yes']
-
-  return lineas
-    .map((linea, index) => {
-      const partes = linea.split('|').map((parte) => parte.trim())
-      const url = partes[0]
-      if (!url) {
-        return null
-      }
-      const alt = partes[1]?.length ? partes[1] : undefined
-      const principalValor = partes[2]?.toLowerCase()
-      const principal = principalValor ? coincidencias.includes(principalValor) : index === 0
-      return {
-        url,
-        alt,
-        principal,
-      }
-    })
-    .filter((imagen): imagen is ImagenProducto => imagen !== null)
 }
 
 const serializarAtributos = (atributos?: ProductoAtributo[]): string => {
@@ -344,18 +293,11 @@ const limpiarPayload = <T extends Record<string, unknown>>(payload: T): T => {
   return limpio as T
 }
 
-const manejarImagenesActualizadas = (imagenes: ImagenProducto[]) => {
-  imagenesProducto.value = imagenes
-  if (productoEnEdicion.value && productoEnEdicion.value.id === productoSeleccionado.value) {
-    productoForm.imagenesTexto = serializarImagenes(imagenes)
-  }
-}
-
 const prepararNuevoProducto = () => {
   productoEnEdicion.value = null
   productoSeleccionado.value = null
+  mostrarFormularioProducto.value = true
   resetProductoForm()
-  imagenesProducto.value = []
   productFormSuccess.value = ''
   productFormError.value = ''
 }
@@ -363,6 +305,7 @@ const prepararNuevoProducto = () => {
 const rellenarFormularioProducto = (producto: Producto) => {
   productoEnEdicion.value = producto
   productoSeleccionado.value = producto.id
+  mostrarFormularioProducto.value = true
   productoForm.nombre = producto.nombre ?? ''
   productoForm.slug = producto.slug ?? ''
   productoForm.descripcion = producto.descripcion ?? ''
@@ -380,9 +323,6 @@ const rellenarFormularioProducto = (producto: Producto) => {
       ? producto.volumenMl.toString()
       : ''
   productoForm.categoriasTexto = serializarCategorias(producto.categorias)
-  const imagenesNormalizadas = normalizarImagenes(producto.imagenes)
-  imagenesProducto.value = imagenesNormalizadas
-  productoForm.imagenesTexto = serializarImagenes(imagenesNormalizadas)
   productoForm.atributosTexto = serializarAtributos(producto.atributos)
   productFormSuccess.value = ''
   productFormError.value = ''
@@ -390,6 +330,29 @@ const rellenarFormularioProducto = (producto: Producto) => {
 
 const editarProducto = (producto: Producto) => {
   rellenarFormularioProducto(producto)
+}
+
+const cerrarFormularioProducto = () => {
+  mostrarFormularioProducto.value = false
+  productoEnEdicion.value = null
+  resetProductoForm()
+  productFormSuccess.value = ''
+  productFormError.value = ''
+}
+
+const limpiarBusquedaProducto = () => {
+  productoSeleccionado.value = null
+}
+
+const abrirModalImagenes = (producto: Producto) => {
+  productoParaImagenes.value = producto
+  mostrarModalImagenes.value = true
+}
+
+const cerrarModalImagenes = async () => {
+  mostrarModalImagenes.value = false
+  productoParaImagenes.value = null
+  await cargarProductos(productosPagination.page)
 }
 
 const refrescarMetricasProductosActivos = async () => {
@@ -484,11 +447,7 @@ const buscarProductoPorIdentificador = async () => {
     } catch (error) {
       producto = await fetchProductBySlug(productoSeleccionado.value)
     }
-    const normalizado = {
-      ...producto,
-      imagenes: normalizarImagenes(producto.imagenes),
-    }
-    rellenarFormularioProducto(normalizado)
+    rellenarFormularioProducto(producto)
     productFormSuccess.value = 'Producto cargado correctamente desde la API.'
   } catch (error) {
     productFormError.value =
@@ -519,7 +478,6 @@ const onSubmitProducto = async () => {
   }
 
   const categorias = parseCategorias(productoForm.categoriasTexto)
-  const imagenes = parseImagenes(productoForm.imagenesTexto)
   const atributos = parseAtributos(productoForm.atributosTexto)
 
   const payloadBase: CrearProductoPayload = {
@@ -540,7 +498,6 @@ const onSubmitProducto = async () => {
         ? Number(productoForm.volumenMl)
         : undefined,
     categorias: categorias.length ? categorias : undefined,
-    imagenes: imagenes.length ? imagenes : undefined,
     atributos: atributos.length ? atributos : undefined,
   }
 
@@ -557,11 +514,7 @@ const onSubmitProducto = async () => {
       productFormSuccess.value = 'Producto creado correctamente.'
     }
 
-    const normalizado = {
-      ...respuesta,
-      imagenes: normalizarImagenes(respuesta.imagenes),
-    }
-    rellenarFormularioProducto(normalizado)
+    rellenarFormularioProducto(respuesta)
     await cargarProductos(productoEnEdicion.value ? productosPagination.page : 1)
     await refrescarMetricasProductosActivos()
   } catch (error) {
@@ -861,36 +814,72 @@ onMounted(async () => {
 
               <div class="col-12 col-xl-6">
                 <section class="panel h-100">
-                  <header class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                  <header class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
                     <div>
-                      <h3 class="h5 mb-0">
-                        {{ productoEnEdicion ? 'Editar producto' : 'Crear producto' }}
+                      <h3 class="h5 mb-1">
+                        {{ esModoEdicionProducto ? 'Editar producto' : 'Crear nuevo producto' }}
                       </h3>
                       <p class="text-muted small mb-0">
-                        Completa los campos y sincroniza la ficha con el catálogo público.
+                        Completa los campos para publicar un producto o selecciona uno existente desde el inventario.
                       </p>
                     </div>
                     <div class="d-flex gap-2">
-                      <button type="button" class="btn btn-sm btn-outline-secondary" @click="prepararNuevoProducto">
+                      <button
+                        v-if="!formularioProductoVisible"
+                        type="button"
+                        class="btn btn-sm btn-primary"
+                        @click="prepararNuevoProducto"
+                      >
                         <i class="bi bi-plus-lg me-1"></i>
-                        Nuevo
+                        Agregar nuevo producto
                       </button>
                       <button
+                        v-else
                         type="button"
-                        class="btn btn-sm btn-outline-primary"
-                        :disabled="productoBuscando || !productoSeleccionado"
-                        @click="buscarProductoPorIdentificador"
+                        class="btn btn-sm btn-outline-secondary"
+                        @click="cerrarFormularioProducto"
                       >
-                        <span
-                          v-if="productoBuscando"
-                          class="spinner-border spinner-border-sm me-2"
-                          role="status"
-                          aria-hidden="true"
-                        ></span>
-                        Cargar
+                        <i class="bi bi-x-lg me-1"></i>
+                        Cerrar formulario
                       </button>
                     </div>
                   </header>
+
+                  <div class="mb-4">
+                    <label class="form-label fw-semibold">Buscar producto existente</label>
+                    <div class="row g-2 align-items-end">
+                      <div class="col-12 col-md-7">
+                        <input
+                          type="text"
+                          class="form-control"
+                          placeholder="Ej: prod-123 o vestido-aurora"
+                          v-model="productoSeleccionadoModel"
+                        />
+                      </div>
+                      <div class="col-12 col-md-5 d-flex gap-2">
+                        <button
+                          type="button"
+                          class="btn btn-outline-primary flex-grow-1"
+                          :disabled="productoBuscando || !productoSeleccionado"
+                          @click="buscarProductoPorIdentificador"
+                        >
+                          <span
+                            v-if="productoBuscando"
+                            class="spinner-border spinner-border-sm me-2"
+                            role="status"
+                            aria-hidden="true"
+                          ></span>
+                          Cargar producto
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" @click="limpiarBusquedaProducto">
+                          Limpiar
+                        </button>
+                      </div>
+                    </div>
+                    <small class="text-muted d-block mt-1">
+                      Ingresa el identificador expuesto por la API para cargarlo en el formulario y editarlo.
+                    </small>
+                  </div>
 
                   <div v-if="productFormSuccess" class="alert alert-success" role="status">
                     {{ productFormSuccess }}
@@ -899,149 +888,127 @@ onMounted(async () => {
                     {{ productFormError }}
                   </div>
 
-                  <form class="row g-3" @submit.prevent="onSubmitProducto">
-                    <div class="col-12 col-md-6">
-                      <label class="form-label">Identificador o slug</label>
-                      <input
-                        type="text"
-                        class="form-control"
-                        placeholder="Ej: prod-123 o vestido-aurora"
-                        v-model="productoSeleccionadoModel"
-                      />
-                      <small class="text-muted d-block mt-1">
-                        Ingresa el identificador expuesto por la API para cargarlo en el panel.
-                      </small>
-                    </div>
-                    <div class="col-12 col-md-6">
-                      <label class="form-label">Slug público</label>
-                      <input
-                        type="text"
-                        class="form-control"
-                        placeholder="Ej: vestido-aurora"
-                        v-model="productoForm.slug"
-                        required
-                      />
-                    </div>
-                    <div class="col-12">
-                      <label class="form-label">Nombre</label>
-                      <input
-                        type="text"
-                        class="form-control"
-                        placeholder="Ej: Vestido seda Aurora"
-                        v-model="productoForm.nombre"
-                        required
-                      />
-                    </div>
-                    <div class="col-12">
-                      <label class="form-label">Descripción</label>
-                      <textarea
-                        class="form-control"
-                        rows="3"
-                        placeholder="Detalle del producto"
-                        v-model="productoForm.descripcion"
-                      ></textarea>
-                    </div>
-                    <div class="col-12 col-md-6">
-                      <label class="form-label">Marca</label>
-                      <input type="text" class="form-control" v-model="productoForm.marca" />
-                    </div>
-                    <div class="col-12 col-md-6">
-                      <label class="form-label">SKU base</label>
-                      <input type="text" class="form-control" v-model="productoForm.skuBase" />
-                    </div>
-                    <div class="col-12 col-md-6">
-                      <label class="form-label">Precio</label>
-                      <div class="input-group">
-                        <span class="input-group-text">$</span>
-                        <input type="number" min="0" class="form-control" v-model="productoForm.precio" required />
+                  <div v-if="formularioProductoVisible">
+                    <form class="row g-3" @submit.prevent="onSubmitProducto">
+                      <div class="col-12 col-md-6">
+                        <label class="form-label">Slug público</label>
+                        <input
+                          type="text"
+                          class="form-control"
+                          placeholder="Ej: vestido-aurora"
+                          v-model="productoForm.slug"
+                          required
+                        />
                       </div>
-                    </div>
-                    <div class="col-12 col-md-6">
-                      <label class="form-label">Peso (gramos)</label>
-                      <input type="number" min="0" class="form-control" v-model="productoForm.pesoGramos" />
-                    </div>
-                    <div class="col-12 col-md-6">
-                      <label class="form-label">Volumen (ml)</label>
-                      <input type="number" min="0" class="form-control" v-model="productoForm.volumenMl" />
-                    </div>
-                    <div class="col-12 col-md-6">
-                      <label class="form-label d-block">Estado</label>
-                      <div class="d-flex flex-wrap gap-3">
-                        <div class="form-check form-switch">
-                          <input
-                            class="form-check-input"
-                            type="checkbox"
-                            id="activo"
-                            v-model="productoForm.activo"
-                          />
-                          <label class="form-check-label" for="activo">Activo</label>
-                        </div>
-                        <div class="form-check form-switch">
-                          <input
-                            class="form-check-input"
-                            type="checkbox"
-                            id="destacado"
-                            v-model="productoForm.destacado"
-                          />
-                          <label class="form-check-label" for="destacado">Destacado</label>
+                      <div class="col-12">
+                        <label class="form-label">Nombre</label>
+                        <input
+                          type="text"
+                          class="form-control"
+                          placeholder="Ej: Vestido seda Aurora"
+                          v-model="productoForm.nombre"
+                          required
+                        />
+                      </div>
+                      <div class="col-12">
+                        <label class="form-label">Descripción</label>
+                        <textarea
+                          class="form-control"
+                          rows="3"
+                          placeholder="Detalle del producto"
+                          v-model="productoForm.descripcion"
+                        ></textarea>
+                      </div>
+                      <div class="col-12 col-md-6">
+                        <label class="form-label">Marca</label>
+                        <input type="text" class="form-control" v-model="productoForm.marca" />
+                      </div>
+                      <div class="col-12 col-md-6">
+                        <label class="form-label">SKU base</label>
+                        <input type="text" class="form-control" v-model="productoForm.skuBase" />
+                      </div>
+                      <div class="col-12 col-md-6">
+                        <label class="form-label">Precio</label>
+                        <div class="input-group">
+                          <span class="input-group-text">$</span>
+                          <input type="number" min="0" class="form-control" v-model="productoForm.precio" required />
                         </div>
                       </div>
-                    </div>
-                    <div class="col-12">
-                      <label class="form-label">Categorías (IDs separadas por coma)</label>
-                      <textarea
-                        class="form-control"
-                        rows="2"
-                        placeholder="cat-verano, cat-novedades"
-                        v-model="productoForm.categoriasTexto"
-                      ></textarea>
-                    </div>
-                    <div class="col-12">
-                      <label class="form-label">Imágenes (una por línea: URL | alt | principal)</label>
-                      <textarea
-                        class="form-control"
-                        rows="4"
-                        placeholder="https://.../imagen.jpg | Frente | principal"
-                        v-model="productoForm.imagenesTexto"
-                      ></textarea>
-                      <small class="text-muted d-block mt-1">
-                        Marca la imagen principal con "principal". Si no se indica, la primera imagen será principal.
-                      </small>
-                    </div>
-                    <div class="col-12">
-                      <label class="form-label">Atributos (clave = valor por línea)</label>
-                      <textarea
-                        class="form-control"
-                        rows="3"
-                        placeholder="tipoPiel = seca"
-                        v-model="productoForm.atributosTexto"
-                      ></textarea>
-                    </div>
-                    <div class="col-12">
-                      <label class="form-label d-flex justify-content-between align-items-center">
-                        Imágenes registradas
-                        <span v-if="resumenImagenes" class="badge bg-light text-muted">{{ resumenImagenes }}</span>
-                      </label>
-                      <ProductImageManager
-                        :id-producto="productoSeleccionado"
-                        @imagenes-actualizadas="manejarImagenesActualizadas"
-                      />
-                    </div>
-                    <div class="col-12 d-flex gap-2">
-                      <button type="submit" class="btn btn-primary" :disabled="productFormSubmitting">
-                        <span
-                          v-if="productFormSubmitting"
-                          class="spinner-border spinner-border-sm me-2"
-                          role="status"
-                          aria-hidden="true"
-                        ></span>
-                        Guardar cambios
-                      </button>
-                      <button type="button" class="btn btn-outline-secondary" @click="prepararNuevoProducto">
-                        Limpiar
-                      </button>
-                    </div>
-                  </form>
+                      <div class="col-12 col-md-6">
+                        <label class="form-label">Peso (gramos)</label>
+                        <input type="number" min="0" class="form-control" v-model="productoForm.pesoGramos" />
+                      </div>
+                      <div class="col-12 col-md-6">
+                        <label class="form-label">Volumen (ml)</label>
+                        <input type="number" min="0" class="form-control" v-model="productoForm.volumenMl" />
+                      </div>
+                      <div class="col-12 col-md-6">
+                        <label class="form-label d-block">Estado</label>
+                        <div class="d-flex flex-wrap gap-3">
+                          <div class="form-check form-switch">
+                            <input
+                              class="form-check-input"
+                              type="checkbox"
+                              id="activo"
+                              v-model="productoForm.activo"
+                            />
+                            <label class="form-check-label" for="activo">Activo</label>
+                          </div>
+                          <div class="form-check form-switch">
+                            <input
+                              class="form-check-input"
+                              type="checkbox"
+                              id="destacado"
+                              v-model="productoForm.destacado"
+                            />
+                            <label class="form-check-label" for="destacado">Destacado</label>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="col-12">
+                        <label class="form-label">Categorías (IDs separadas por coma)</label>
+                        <textarea
+                          class="form-control"
+                          rows="2"
+                          placeholder="cat-verano, cat-novedades"
+                          v-model="productoForm.categoriasTexto"
+                        ></textarea>
+                      </div>
+                      <div class="col-12">
+                        <label class="form-label">Atributos (clave = valor por línea)</label>
+                        <textarea
+                          class="form-control"
+                          rows="3"
+                          placeholder="tipoPiel = seca"
+                          v-model="productoForm.atributosTexto"
+                        ></textarea>
+                      </div>
+                      <div class="col-12">
+                        <div class="alert alert-info small mb-0" role="status">
+                          <i class="bi bi-images me-2"></i>
+                          Las imágenes se gestionan desde la grilla de inventario con el botón
+                          <strong>Imágenes</strong>.
+                        </div>
+                      </div>
+                      <div class="col-12 d-flex flex-wrap gap-2">
+                        <button type="submit" class="btn btn-primary" :disabled="productFormSubmitting">
+                          <span
+                            v-if="productFormSubmitting"
+                            class="spinner-border spinner-border-sm me-2"
+                            role="status"
+                            aria-hidden="true"
+                          ></span>
+                          Guardar cambios
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" @click="cerrarFormularioProducto">
+                          Cancelar
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                  <div v-else class="alert alert-light border" role="status">
+                    Selecciona «Agregar nuevo producto» o el botón «Editar» de la grilla para modificar un producto.
+                  </div>
                 </section>
               </div>
 
@@ -1111,6 +1078,13 @@ onMounted(async () => {
                                 <div class="d-flex justify-content-end gap-2">
                                   <button class="btn btn-sm btn-outline-primary" type="button" @click="editarProducto(producto)">
                                     Editar
+                                  </button>
+                                  <button
+                                    class="btn btn-sm btn-outline-secondary"
+                                    type="button"
+                                    @click="abrirModalImagenes(producto)"
+                                  >
+                                    Imágenes
                                   </button>
                                   <button
                                     class="btn btn-sm btn-outline-danger"
@@ -1534,6 +1508,12 @@ onMounted(async () => {
         </div>
       </div>
     </div>
+    <ProductImagesModal
+      :show="mostrarModalImagenes"
+      :producto="productoParaImagenes"
+      @close="cerrarModalImagenes"
+      @imagenes-actualizadas="cargarProductos(productosPagination.page)"
+    />
   </section>
 </template>
 
