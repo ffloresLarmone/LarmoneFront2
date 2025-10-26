@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import ProductImagesModal from '../components/products/ProductImagesModal.vue'
 import type {
   ActualizarEnvioEstadoPayload,
   CrearProductoPayload,
+  Marca,
   Producto,
   ProductoAtributo,
   ProductoAtributosJson,
@@ -19,6 +20,12 @@ import {
   updateProduct,
   type FetchProductsParams,
 } from '../services/productService'
+import {
+  createBrand,
+  deleteBrand,
+  fetchBrands,
+  updateBrand,
+} from '../services/brandService'
 import { mapearProductosConImagenes } from '../services/imageService'
 import {
   cancelVenta,
@@ -35,6 +42,7 @@ interface TabConfig {
 }
 
 const PRODUCTOS_PAGE_SIZE = 8
+const MARCAS_PAGE_SIZE = 10
 const VENTAS_PAGE_SIZE = 8
 
 const tabs: TabConfig[] = [
@@ -43,6 +51,12 @@ const tabs: TabConfig[] = [
     label: 'Productos',
     description: 'Administra el catálogo, precios, inventario y visibilidad de los productos.',
     icon: 'bi-box-seam',
+  },
+  {
+    id: 'brands',
+    label: 'Marcas',
+    description: 'Mantén actualizado el listado de marcas disponibles en la tienda.',
+    icon: 'bi-tags',
   },
   {
     id: 'orders',
@@ -129,6 +143,28 @@ const productFormSubmitting = ref(false)
 const productFormSuccess = ref('')
 const productFormError = ref('')
 
+const marcas = ref<Marca[]>([])
+const marcasLoading = ref(false)
+const marcasError = ref('')
+const marcasFeedback = ref('')
+const marcasPagination = reactive({
+  page: 1,
+  pageSize: MARCAS_PAGE_SIZE,
+  total: 0,
+  totalPages: 0,
+})
+const marcaEnEdicion = ref<Marca | null>(null)
+const marcaOperacionEnCurso = ref<string | null>(null)
+const marcaForm = reactive({
+  nombre: '',
+  slug: '',
+  activo: true,
+})
+const marcaFormSubmitting = ref(false)
+const marcaFormSuccess = ref('')
+const marcaFormError = ref('')
+const marcaSlugEditadoManualmente = ref(false)
+
 const ventas = ref<Venta[]>([])
 const ventasLoading = ref(false)
 const ventasError = ref('')
@@ -169,6 +205,9 @@ const metricProductosSinImagen = computed(
   () => productos.value.filter((producto) => !producto.imagenes?.length).length,
 )
 const metricTotalVentas = computed(() => ventasPagination.total)
+const esModoEdicionMarca = computed(() => marcaEnEdicion.value !== null)
+const marcaFormTitulo = computed(() => (esModoEdicionMarca.value ? 'Editar marca' : 'Crear nueva marca'))
+const marcaFormSubmitLabel = computed(() => (esModoEdicionMarca.value ? 'Guardar cambios' : 'Crear marca'))
 
 const formatCurrency = (value: number | undefined | null) => {
   const amount = typeof value === 'number' && !Number.isNaN(value) ? value : 0
@@ -219,6 +258,15 @@ const badgeClassForEstado = (estado: string | undefined | null) => {
     CANCELADA: 'text-bg-danger',
   }
   return map[normalized] ?? 'text-bg-secondary'
+}
+
+const slugify = (value: string): string => {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)+/g, '')
 }
 
 const obtenerIdProducto = (producto?: Producto | null): string | null => {
@@ -722,6 +770,167 @@ const desactivarProducto = async (producto: Producto) => {
   }
 }
 
+const resetMarcaForm = () => {
+  marcaForm.nombre = ''
+  marcaForm.slug = ''
+  marcaForm.activo = true
+}
+
+const prepararNuevaMarca = () => {
+  marcaEnEdicion.value = null
+  resetMarcaForm()
+  marcaFormError.value = ''
+  marcaFormSuccess.value = ''
+  marcaSlugEditadoManualmente.value = false
+}
+
+const editarMarca = (marca: Marca) => {
+  marcaEnEdicion.value = marca
+  marcaForm.nombre = marca.nombre ?? ''
+  marcaForm.slug = marca.slug ?? ''
+  marcaForm.activo = marca.activo ?? true
+  marcaFormError.value = ''
+  marcaFormSuccess.value = ''
+  marcaSlugEditadoManualmente.value = true
+}
+
+const cancelarEdicionMarca = () => {
+  prepararNuevaMarca()
+}
+
+const handleMarcaSlugInput = () => {
+  const trimmed = marcaForm.slug.trim()
+  marcaSlugEditadoManualmente.value = trimmed.length > 0
+}
+
+const cargarMarcas = async (page = marcasPagination.page) => {
+  marcasLoading.value = true
+  marcasError.value = ''
+  try {
+    const respuesta = await fetchBrands({
+      page,
+      pageSize: marcasPagination.pageSize,
+    })
+    marcas.value = respuesta.items
+    marcasPagination.page = respuesta.page
+    marcasPagination.pageSize = respuesta.pageSize
+    marcasPagination.total = respuesta.total
+    marcasPagination.totalPages = respuesta.totalPages
+  } catch (error) {
+    marcasError.value =
+      error instanceof Error
+        ? error.message
+        : 'No fue posible cargar las marcas. Intenta nuevamente.'
+  } finally {
+    marcasLoading.value = false
+  }
+}
+
+const cambiarPaginaMarcas = async (page: number) => {
+  if (page < 1 || page > marcasPagination.totalPages || marcasLoading.value) {
+    return
+  }
+  await cargarMarcas(page)
+}
+
+const enviarFormularioMarca = async () => {
+  const nombre = marcaForm.nombre.trim()
+  const slug = marcaForm.slug.trim()
+
+  if (!nombre) {
+    marcaFormError.value = 'El nombre de la marca es obligatorio.'
+    return
+  }
+
+  if (!slug) {
+    marcaFormError.value = 'El slug de la marca es obligatorio.'
+    return
+  }
+
+  const payload = {
+    nombre,
+    slug,
+    activo: marcaForm.activo,
+  }
+
+  marcaFormSubmitting.value = true
+  marcaFormError.value = ''
+  try {
+    if (marcaEnEdicion.value) {
+      const respuesta = await updateBrand(marcaEnEdicion.value.id, payload)
+      marcaEnEdicion.value = respuesta
+      marcaFormSuccess.value = 'Marca actualizada correctamente.'
+      await cargarMarcas(marcasPagination.page)
+    } else {
+      await createBrand(payload)
+      await cargarMarcas(1)
+      prepararNuevaMarca()
+      marcaFormSuccess.value = 'Marca creada correctamente.'
+    }
+    marcasFeedback.value = ''
+  } catch (error) {
+    marcaFormError.value =
+      error instanceof Error
+        ? error.message
+        : 'No fue posible guardar la marca. Intenta nuevamente.'
+  } finally {
+    marcaFormSubmitting.value = false
+  }
+}
+
+const eliminarMarca = async (marca: Marca) => {
+  const confirmar = window.confirm(
+    `¿Deseas eliminar la marca "${marca.nombre}"? Esta acción no se puede deshacer.`,
+  )
+  if (!confirmar) {
+    return
+  }
+
+  const id = String(marca.id)
+  marcaOperacionEnCurso.value = id
+  marcasFeedback.value = ''
+  marcasError.value = ''
+
+  try {
+    await deleteBrand(id)
+    marcasFeedback.value = `Marca "${marca.nombre}" eliminada correctamente.`
+    const paginaActual =
+      marcas.value.length > 1 || marcasPagination.page === 1
+        ? marcasPagination.page
+        : Math.max(marcasPagination.page - 1, 1)
+    await cargarMarcas(paginaActual)
+    if (marcaEnEdicion.value?.id === marca.id) {
+      prepararNuevaMarca()
+    }
+  } catch (error) {
+    marcasError.value =
+      error instanceof Error
+        ? error.message
+        : 'No fue posible eliminar la marca. Intenta nuevamente.'
+  } finally {
+    marcaOperacionEnCurso.value = null
+  }
+}
+
+watch(
+  () => marcaForm.nombre,
+  (nuevoNombre) => {
+    if (marcaSlugEditadoManualmente.value) {
+      return
+    }
+    marcaForm.slug = nuevoNombre ? slugify(nuevoNombre) : ''
+  },
+)
+
+watch(
+  () => marcaForm.slug,
+  (nuevoSlug) => {
+    if (nuevoSlug.trim().length === 0) {
+      marcaSlugEditadoManualmente.value = false
+    }
+  },
+)
+
 const cargarVentas = async (page = ventasPagination.page) => {
   ventasLoading.value = true
   ventasError.value = ''
@@ -846,7 +1055,7 @@ const actualizarEstadoEnvioPedido = async (venta: Venta) => {
 
 onMounted(async () => {
   await refrescarMetricasProductosActivos()
-  await Promise.all([cargarProductos(1), cargarVentas(1)])
+  await Promise.all([cargarProductos(1), cargarMarcas(1), cargarVentas(1)])
 })
 </script>
 
@@ -1317,6 +1526,244 @@ onMounted(async () => {
                         </button>
                       </nav>
                       <p class="text-muted small mt-2 mb-0">Total registros: {{ productosPagination.total }}</p>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="activeTab === 'brands'" class="tab-panel" role="tabpanel">
+            <div class="row g-4">
+              <div class="col-12 col-xl-4">
+                <section class="panel h-100">
+                  <header class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+                    <div>
+                      <h3 class="h5 mb-1">{{ marcaFormTitulo }}</h3>
+                      <p class="text-muted small mb-0">
+                        Define el nombre, slug y estado de las marcas disponibles para los productos.
+                      </p>
+                    </div>
+                    <button
+                      v-if="esModoEdicionMarca"
+                      type="button"
+                      class="btn btn-sm btn-outline-secondary"
+                      @click="cancelarEdicionMarca"
+                    >
+                      <i class="bi bi-x-lg me-1"></i>
+                      Cancelar
+                    </button>
+                  </header>
+
+                  <div class="d-grid gap-3">
+                    <div v-if="marcaFormSuccess" class="alert alert-success mb-0" role="alert">
+                      {{ marcaFormSuccess }}
+                    </div>
+                    <div v-if="marcaFormError" class="alert alert-danger mb-0" role="alert">
+                      {{ marcaFormError }}
+                    </div>
+
+                    <form class="d-grid gap-3" @submit.prevent="enviarFormularioMarca">
+                      <div>
+                        <label class="form-label" for="marcaNombre">Nombre</label>
+                        <input
+                          id="marcaNombre"
+                          v-model="marcaForm.nombre"
+                          type="text"
+                          class="form-control"
+                          placeholder="Ej: The Ordinary"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label class="form-label" for="marcaSlug">Slug</label>
+                        <input
+                          id="marcaSlug"
+                          v-model="marcaForm.slug"
+                          type="text"
+                          class="form-control"
+                          placeholder="Ej: the-ordinary"
+                          required
+                          @input="handleMarcaSlugInput"
+                        />
+                        <small class="text-muted">Se utiliza en las URLs y debe ser único.</small>
+                      </div>
+                      <div class="form-check form-switch">
+                        <input
+                          id="marcaActiva"
+                          v-model="marcaForm.activo"
+                          class="form-check-input"
+                          type="checkbox"
+                        />
+                        <label class="form-check-label" for="marcaActiva">
+                          {{ marcaForm.activo ? 'Marca activa en el catálogo' : 'Marca oculta temporalmente' }}
+                        </label>
+                      </div>
+                      <div class="d-grid gap-2">
+                        <button
+                          type="submit"
+                          class="btn btn-primary"
+                          :disabled="marcaFormSubmitting"
+                        >
+                          <span
+                            v-if="marcaFormSubmitting"
+                            class="spinner-border spinner-border-sm me-2"
+                            role="status"
+                            aria-hidden="true"
+                          ></span>
+                          {{ marcaFormSubmitLabel }}
+                        </button>
+                        <button
+                          v-if="!esModoEdicionMarca"
+                          type="button"
+                          class="btn btn-outline-secondary"
+                          @click="prepararNuevaMarca"
+                        >
+                          Limpiar campos
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </section>
+              </div>
+
+              <div class="col-12 col-xl-8">
+                <section class="panel h-100">
+                  <header class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
+                    <div>
+                      <h3 class="h5 mb-1">Listado de marcas</h3>
+                      <p class="text-muted small mb-0">
+                        Administra las marcas activas e inactivas que se muestran en el catálogo.
+                      </p>
+                    </div>
+                    <div class="d-flex gap-2">
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        :disabled="marcasLoading"
+                        @click="cargarMarcas()"
+                      >
+                        <i class="bi bi-arrow-clockwise me-1"></i>
+                        Actualizar
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-primary"
+                        @click="prepararNuevaMarca"
+                      >
+                        <i class="bi bi-plus-lg me-1"></i>
+                        Nueva marca
+                      </button>
+                    </div>
+                  </header>
+
+                  <div class="d-grid gap-3">
+                    <div v-if="marcasFeedback" class="alert alert-success mb-0" role="alert">
+                      {{ marcasFeedback }}
+                    </div>
+                    <div v-if="marcasError" class="alert alert-danger mb-0" role="alert">
+                      {{ marcasError }}
+                    </div>
+
+                    <div v-if="marcasLoading" class="text-center py-5">
+                      <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+                      <p class="text-muted mt-3 mb-0">Cargando marcas...</p>
+                    </div>
+
+                    <div v-else>
+                      <div v-if="!marcas.length" class="text-center py-5 text-muted">
+                        <i class="bi bi-tags display-5 mb-3"></i>
+                        <p class="mb-0">Todavía no se han registrado marcas.</p>
+                      </div>
+                      <div v-else class="table-responsive">
+                        <table class="table align-middle">
+                          <thead>
+                            <tr>
+                              <th scope="col">Marca</th>
+                              <th scope="col">Slug</th>
+                              <th scope="col" class="text-center">Estado</th>
+                              <th scope="col" class="text-end">Actualización</th>
+                              <th scope="col" class="text-end">Acciones</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="marca in marcas" :key="marca.id">
+                              <td>
+                                <p class="fw-semibold mb-0">{{ marca.nombre }}</p>
+                                <small class="text-muted">ID: {{ marca.id }}</small>
+                              </td>
+                              <td><code>{{ marca.slug }}</code></td>
+                              <td class="text-center">
+                                <span
+                                  class="badge"
+                                  :class="marca.activo ? 'text-bg-success' : 'text-bg-secondary'"
+                                >
+                                  {{ marca.activo ? 'Activa' : 'Inactiva' }}
+                                </span>
+                              </td>
+                              <td class="text-end">
+                                <small class="text-muted">
+                                  {{ formatDateTime(marca.updatedAt || marca.createdAt) }}
+                                </small>
+                              </td>
+                              <td class="text-end">
+                                <div class="d-flex justify-content-end gap-2">
+                                  <button
+                                    class="btn btn-sm btn-outline-primary"
+                                    type="button"
+                                    @click="editarMarca(marca)"
+                                  >
+                                    Editar
+                                  </button>
+                                  <button
+                                    class="btn btn-sm btn-outline-danger"
+                                    type="button"
+                                    :disabled="marcaOperacionEnCurso === String(marca.id)"
+                                    @click="eliminarMarca(marca)"
+                                  >
+                                    <span
+                                      v-if="marcaOperacionEnCurso === String(marca.id)"
+                                      class="spinner-border spinner-border-sm me-1"
+                                      role="status"
+                                      aria-hidden="true"
+                                    ></span>
+                                    Eliminar
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <nav
+                        v-if="marcasPagination.totalPages > 1"
+                        class="d-flex justify-content-between align-items-center mt-3"
+                        aria-label="Paginación de marcas"
+                      >
+                        <button
+                          class="btn btn-sm btn-outline-secondary"
+                          type="button"
+                          :disabled="marcasPagination.page === 1 || marcasLoading"
+                          @click="cambiarPaginaMarcas(marcasPagination.page - 1)"
+                        >
+                          Anterior
+                        </button>
+                        <span class="text-muted small">
+                          Página {{ marcasPagination.page }} de {{ marcasPagination.totalPages }}
+                        </span>
+                        <button
+                          class="btn btn-sm btn-outline-secondary"
+                          type="button"
+                          :disabled="
+                            marcasPagination.page === marcasPagination.totalPages || marcasLoading
+                          "
+                          @click="cambiarPaginaMarcas(marcasPagination.page + 1)"
+                        >
+                          Siguiente
+                        </button>
+                      </nav>
+                      <p class="text-muted small mt-2 mb-0">Total registros: {{ marcasPagination.total }}</p>
                     </div>
                   </div>
                 </section>

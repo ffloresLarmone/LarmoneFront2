@@ -6,6 +6,15 @@ export interface ImagenProducto {
   orden?: number | null
 }
 
+export interface Marca {
+  id: number
+  nombre: string
+  slug: string
+  activo: boolean
+  createdAt?: string
+  updatedAt?: string
+}
+
 export interface ProductoCategoriaResumen {
   categoria: {
     id: string
@@ -61,6 +70,14 @@ export interface Producto {
   ratingCount?: number
   ratingResumen?: ProductoRatingResumen
 }
+
+export interface CrearMarcaPayload {
+  nombre: string
+  slug: string
+  activo?: boolean
+}
+
+export type ActualizarMarcaPayload = Partial<CrearMarcaPayload>
 
 export interface CrearProductoPayload {
   sku: string
