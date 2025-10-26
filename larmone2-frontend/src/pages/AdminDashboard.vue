@@ -294,14 +294,32 @@ const limpiarPayload = <T extends Record<string, unknown>>(payload: T): T => {
   return limpio as T
 }
 
-const obtenerTextoNormalizado = (valor: unknown): string => {
-  if (typeof valor === 'string') {
-    return valor.trim()
+const normalizarTexto = (valor: unknown): string => {
+  if (valor === null || valor === undefined) {
+    return ''
   }
+
+  const comoTexto = typeof valor === 'string' ? valor : String(valor)
+  return comoTexto.replace(/^\s+|\s+$/g, '')
+}
+
+const parsearNumeroOpcional = (valor: unknown): number | undefined => {
   if (typeof valor === 'number') {
-    return Number.isFinite(valor) ? valor.toString() : ''
+    return Number.isFinite(valor) ? valor : undefined
   }
-  return ''
+
+  const normalizado = normalizarTexto(valor)
+  if (!normalizado) {
+    return undefined
+  }
+
+  const numero = Number(normalizado)
+  return Number.isFinite(numero) ? numero : undefined
+}
+
+const parsearNumeroRequerido = (valor: unknown): number | null => {
+  const numero = parsearNumeroOpcional(valor)
+  return typeof numero === 'number' ? numero : null
 }
 
 const prepararNuevoProducto = () => {
@@ -474,14 +492,14 @@ const onSubmitProducto = async () => {
   productFormError.value = ''
   productFormSuccess.value = ''
 
-  const nombre = obtenerTextoNormalizado(productoForm.nombre)
-  const slug = obtenerTextoNormalizado(productoForm.slug)
-  const descripcion = obtenerTextoNormalizado(productoForm.descripcion)
-  const marca = obtenerTextoNormalizado(productoForm.marca)
-  const skuBase = obtenerTextoNormalizado(productoForm.skuBase)
-  const precio = Number(obtenerTextoNormalizado(productoForm.precio))
-  const pesoGramosTexto = obtenerTextoNormalizado(productoForm.pesoGramos)
-  const volumenMlTexto = obtenerTextoNormalizado(productoForm.volumenMl)
+  const nombre = normalizarTexto(productoForm.nombre)
+  const slug = normalizarTexto(productoForm.slug)
+  const descripcion = normalizarTexto(productoForm.descripcion)
+  const marca = normalizarTexto(productoForm.marca)
+  const skuBase = normalizarTexto(productoForm.skuBase)
+  const precio = parsearNumeroRequerido(productoForm.precio)
+  const pesoGramos = parsearNumeroOpcional(productoForm.pesoGramos)
+  const volumenMl = parsearNumeroOpcional(productoForm.volumenMl)
 
   if (!nombre) {
     productFormError.value = 'El nombre del producto es obligatorio.'
@@ -491,7 +509,7 @@ const onSubmitProducto = async () => {
     productFormError.value = 'El slug del producto es obligatorio.'
     return
   }
-  if (Number.isNaN(precio)) {
+  if (precio === null) {
     productFormError.value = 'Debes ingresar un precio válido.'
     return
   }
@@ -508,8 +526,8 @@ const onSubmitProducto = async () => {
     precio,
     activo: productoForm.activo,
     destacado: productoForm.destacado,
-    pesoGramos: pesoGramosTexto.length > 0 ? Number(pesoGramosTexto) : undefined,
-    volumenMl: volumenMlTexto.length > 0 ? Number(volumenMlTexto) : undefined,
+    pesoGramos,
+    volumenMl,
     categorias: categorias.length ? categorias : undefined,
     atributos: atributos.length ? atributos : undefined,
   }
