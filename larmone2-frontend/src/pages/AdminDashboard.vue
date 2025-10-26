@@ -103,6 +103,7 @@ const productoSeleccionadoModel = computed<string>({
 const mostrarFormularioProducto = ref(false)
 const formularioProductoVisible = computed(() => mostrarFormularioProducto.value || productoEnEdicion.value !== null)
 const esModoEdicionProducto = computed(() => productoEnEdicion.value !== null)
+const productoFormSubmitLabel = computed(() => (esModoEdicionProducto.value ? 'Guardar cambios' : 'Agregar'))
 
 const productoParaImagenes = ref<Producto | null>(null)
 const mostrarModalImagenes = ref(false)
@@ -293,6 +294,34 @@ const limpiarPayload = <T extends Record<string, unknown>>(payload: T): T => {
   return limpio as T
 }
 
+const normalizarTexto = (valor: unknown): string => {
+  if (valor === null || valor === undefined) {
+    return ''
+  }
+
+  const comoTexto = typeof valor === 'string' ? valor : String(valor)
+  return comoTexto.replace(/^\s+|\s+$/g, '')
+}
+
+const parsearNumeroOpcional = (valor: unknown): number | undefined => {
+  if (typeof valor === 'number') {
+    return Number.isFinite(valor) ? valor : undefined
+  }
+
+  const normalizado = normalizarTexto(valor)
+  if (!normalizado) {
+    return undefined
+  }
+
+  const numero = Number(normalizado)
+  return Number.isFinite(numero) ? numero : undefined
+}
+
+const parsearNumeroRequerido = (valor: unknown): number | null => {
+  const numero = parsearNumeroOpcional(valor)
+  return typeof numero === 'number' ? numero : null
+}
+
 const prepararNuevoProducto = () => {
   productoEnEdicion.value = null
   productoSeleccionado.value = null
@@ -463,16 +492,24 @@ const onSubmitProducto = async () => {
   productFormError.value = ''
   productFormSuccess.value = ''
 
-  const precio = Number(productoForm.precio)
-  if (!productoForm.nombre.trim()) {
+  const nombre = normalizarTexto(productoForm.nombre)
+  const slug = normalizarTexto(productoForm.slug)
+  const descripcion = normalizarTexto(productoForm.descripcion)
+  const marca = normalizarTexto(productoForm.marca)
+  const skuBase = normalizarTexto(productoForm.skuBase)
+  const precio = parsearNumeroRequerido(productoForm.precio)
+  const pesoGramos = parsearNumeroOpcional(productoForm.pesoGramos)
+  const volumenMl = parsearNumeroOpcional(productoForm.volumenMl)
+
+  if (!nombre) {
     productFormError.value = 'El nombre del producto es obligatorio.'
     return
   }
-  if (!productoForm.slug.trim()) {
+  if (!slug) {
     productFormError.value = 'El slug del producto es obligatorio.'
     return
   }
-  if (Number.isNaN(precio)) {
+  if (precio === null) {
     productFormError.value = 'Debes ingresar un precio válido.'
     return
   }
@@ -481,22 +518,16 @@ const onSubmitProducto = async () => {
   const atributos = parseAtributos(productoForm.atributosTexto)
 
   const payloadBase: CrearProductoPayload = {
-    nombre: productoForm.nombre.trim(),
-    slug: productoForm.slug.trim(),
-    descripcion: productoForm.descripcion.trim() || undefined,
-    marca: productoForm.marca.trim() || undefined,
-    skuBase: productoForm.skuBase.trim() || undefined,
+    nombre,
+    slug,
+    descripcion: descripcion || undefined,
+    marca: marca || undefined,
+    skuBase: skuBase || undefined,
     precio,
     activo: productoForm.activo,
     destacado: productoForm.destacado,
-    pesoGramos:
-      productoForm.pesoGramos.trim().length > 0
-        ? Number(productoForm.pesoGramos)
-        : undefined,
-    volumenMl:
-      productoForm.volumenMl.trim().length > 0
-        ? Number(productoForm.volumenMl)
-        : undefined,
+    pesoGramos,
+    volumenMl,
     categorias: categorias.length ? categorias : undefined,
     atributos: atributos.length ? atributos : undefined,
   }
@@ -998,7 +1029,7 @@ onMounted(async () => {
                             role="status"
                             aria-hidden="true"
                           ></span>
-                          Guardar cambios
+                          {{ productoFormSubmitLabel }}
                         </button>
                         <button type="button" class="btn btn-outline-secondary" @click="cerrarFormularioProducto">
                           Cancelar
