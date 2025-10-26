@@ -1,12 +1,24 @@
+import axios, {
+  AxiosError,
+  type AxiosHeaders,
+  type AxiosInstance,
+  type AxiosRequestConfig,
+  type AxiosResponse,
+  type Method,
+} from 'axios'
 import { reactive } from 'vue'
 
 const DEFAULT_BASE_URL = 'http://localhost:3000/api'
+const GENERIC_ERROR_MESSAGE =
+  'No pudimos procesar tu solicitud. Inténtalo nuevamente en unos minutos.'
 
 interface ApiStatusState {
   isReachable: boolean
   lastCheckedAt: string | null
   lastError: string | null
 }
+
+type TokenProvider = () => string | null | undefined
 
 export const apiStatus = reactive<ApiStatusState>({
   isReachable: true,
@@ -28,49 +40,161 @@ export function getBaseUrl(): string {
   return DEFAULT_BASE_URL
 }
 
-function buildUrl(path: string): string {
-  const sanitizedPath = path.startsWith('/') ? path : `/${path}`
-  return `${getBaseUrl()}${sanitizedPath}`
+function normalizeHeaders(headersInit: unknown): Record<string, string> {
+  if (!headersInit) {
+    return {}
+  }
+
+  if (typeof Headers !== 'undefined' && headersInit instanceof Headers) {
+    const result: Record<string, string> = {}
+    headersInit.forEach((value, key) => {
+      result[key] = value
+    })
+    return result
+  }
+
+  if (Array.isArray(headersInit)) {
+    return headersInit.reduce<Record<string, string>>((acc, current) => {
+      if (Array.isArray(current) && current.length === 2) {
+        const [key, value] = current
+        if (typeof key === 'string' && typeof value === 'string') {
+          acc[key] = value
+        }
+      }
+      return acc
+    }, {})
+  }
+
+  if (typeof headersInit === 'object') {
+    return { ...(headersInit as Record<string, string>) }
+  }
+
+  return {}
+}
+
+function hasHeader(headers: Record<string, string>, headerName: string): boolean {
+  const target = headerName.toLowerCase()
+  return Object.keys(headers).some((key) => key.toLowerCase() === target)
+}
+
+function ensureContentType(headers: Record<string, string>) {
+  if (!hasHeader(headers, 'content-type')) {
+    headers['Content-Type'] = 'application/json'
+  }
+}
+
+class ApiHttpClient {
+  private instance: AxiosInstance
+  private tokenProvider?: TokenProvider
+
+  constructor(baseURL: string) {
+    this.instance = axios.create({
+      baseURL,
+      withCredentials: true,
+    })
+
+    this.instance.interceptors.request.use((config) => {
+      const headers = normalizeHeaders(config.headers)
+      ensureContentType(headers)
+
+      const token = this.tokenProvider?.()
+      if (token && !hasHeader(headers, 'authorization')) {
+        headers.Authorization = `Bearer ${token}`
+      }
+
+      config.headers = headers
+      return config
+    })
+  }
+
+  setTokenProvider(provider?: TokenProvider) {
+    this.tokenProvider = provider
+  }
+
+  async request<T>(url: string, options: RequestInit = {}): Promise<T> {
+    try {
+      const response = await this.requestResponse<T>(url, options)
+
+      if (response.status === 204) {
+        return undefined as T
+      }
+
+      return response.data
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const message = extractErrorMessage(error)
+        throw new Error(message)
+      }
+
+      if (error instanceof Error) {
+        throw error
+      }
+
+      throw new Error(GENERIC_ERROR_MESSAGE)
+    }
+  }
+
+  async requestResponse<T>(url: string, options: RequestInit = {}): Promise<AxiosResponse<T>> {
+    const config = this.toAxiosConfig(url, options)
+
+    try {
+      const response = await this.instance.request<T>(config)
+      updateStatus(true)
+      return response
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        if (!error.response) {
+          const message = buildNetworkErrorMessage(error)
+          updateStatus(false, message)
+          throw new Error(message)
+        }
+
+        updateStatus(true)
+        throw error
+      }
+
+      const fallbackMessage = GENERIC_ERROR_MESSAGE
+      updateStatus(false, fallbackMessage)
+      throw new Error(fallbackMessage)
+    }
+  }
+
+  private toAxiosConfig(url: string, options: RequestInit): AxiosRequestConfig {
+    const method = (options.method ?? 'GET').toUpperCase() as Method
+    const headers = normalizeHeaders(options.headers)
+    ensureContentType(headers)
+
+    const config: AxiosRequestConfig = {
+      url,
+      method,
+      headers,
+      data: options.body,
+      signal: options.signal,
+    }
+
+    return config
+  }
+}
+
+const client = new ApiHttpClient(getBaseUrl())
+
+let staticToken: string | null = null
+client.setTokenProvider(() => staticToken)
+
+export function setAuthToken(token: string | null) {
+  staticToken = token
+}
+
+export function setTokenProvider(provider?: TokenProvider) {
+  if (provider) {
+    client.setTokenProvider(provider)
+  } else {
+    client.setTokenProvider(() => staticToken)
+  }
 }
 
 export async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
-  let response: Response
-
-  try {
-    response = await fetch(buildUrl(url), {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options.headers || {}),
-      },
-      credentials: 'include',
-      ...options,
-    })
-  } catch (error) {
-    const offline = typeof navigator !== 'undefined' && navigator.onLine === false
-    const fallbackMessage = offline
-      ? 'Parece que estás sin conexión. Revisa tu red e intenta nuevamente.'
-      : 'No fue posible contactar al servidor de Larmone. Inténtalo nuevamente en unos minutos.'
-    updateStatus(false, fallbackMessage)
-
-    if (error instanceof Error && error.message) {
-      console.error('[apiClient] request failed:', error.message)
-    }
-
-    throw new Error(fallbackMessage)
-  }
-
-  updateStatus(true)
-
-  if (!response.ok) {
-    const message = await safeParseError(response)
-    throw new Error(message)
-  }
-
-  if (response.status === 204) {
-    return undefined as T
-  }
-
-  return (await response.json()) as T
+  return client.request<T>(url, options)
 }
 
 export async function pingBackend(): Promise<boolean> {
@@ -78,16 +202,22 @@ export async function pingBackend(): Promise<boolean> {
 
   for (const path of candidates) {
     try {
-      const response = await fetch(buildUrl(path), {
-        credentials: 'include',
+      const response = await client.requestResponse(path, {
         headers: { Accept: 'application/json' },
       })
 
       if (response.status < 500) {
         updateStatus(true)
-        return response.ok
+        return response.status >= 200 && response.status < 300
       }
     } catch (error) {
+      if (axios.isAxiosError(error) && error.response) {
+        if (error.response.status < 500) {
+          updateStatus(true)
+          return error.response.status >= 200 && error.response.status < 300
+        }
+      }
+
       // Continuamos con el siguiente candidato
       continue
     }
@@ -101,8 +231,6 @@ export async function pingBackend(): Promise<boolean> {
   updateStatus(false, fallbackMessage)
   return false
 }
-
-const GENERIC_ERROR_MESSAGE = 'No pudimos procesar tu solicitud. Inténtalo nuevamente en unos minutos.'
 
 function extractMessage(payload: unknown): string | null {
   if (!payload) {
@@ -141,56 +269,111 @@ function extractMessage(payload: unknown): string | null {
   return null
 }
 
-async function safeParseError(response: Response): Promise<string> {
-  let raw = ''
-
-  try {
-    raw = await response.text()
-  } catch (error) {
-    return response.statusText || GENERIC_ERROR_MESSAGE
+function getContentType(
+  headers: AxiosHeaders | (Record<string, unknown> & Partial<AxiosHeaders>) | undefined,
+): string {
+  if (!headers) {
+    return ''
   }
 
-  if (raw.length === 0) {
-    return response.statusText || GENERIC_ERROR_MESSAGE
+  const candidate =
+    typeof (headers as AxiosHeaders).get === 'function'
+      ? (headers as AxiosHeaders).get('content-type')
+      : (() => {
+          const entries = Object.entries(headers as Record<string, unknown>)
+          const match = entries.find(([key]) => key.toLowerCase() === 'content-type')
+          if (!match) {
+            return undefined
+          }
+          const [, value] = match
+          return value
+        })()
+
+  if (!candidate) {
+    return ''
   }
 
-  const contentType = response.headers.get('content-type') ?? ''
+  if (Array.isArray(candidate)) {
+    return candidate.join(', ')
+  }
 
-  if (contentType.includes('application/json')) {
-    try {
-      const data = JSON.parse(raw)
-      const message = extractMessage(data)
-      if (message) {
-        return message
-      }
-    } catch (error) {
-      // Continuamos con el texto plano
+  return String(candidate)
+}
+
+function sanitizeHtmlPayload(raw: string): string {
+  const preMatch = raw.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i)
+  const extracted = preMatch ? preMatch[1] : raw.replace(/<[^>]+>/g, ' ')
+  const decoded = extracted.replace(/&(?:quot|apos|amp|lt|gt);/gi, (entity) => {
+    const map: Record<string, string> = {
+      '&quot;': '"',
+      '&apos;': "'",
+      '&amp;': '&',
+      '&lt;': '<',
+      '&gt;': '>',
     }
+    return map[entity.toLowerCase()] ?? ' '
+  })
+  return decoded.replace(/\s+/g, ' ').trim()
+}
+
+function extractErrorMessage(error: AxiosError): string {
+  const response = error.response
+  if (!response) {
+    return buildNetworkErrorMessage(error)
   }
 
-  const fallback = raw.trim()
-  if (fallback.length > 0) {
-    if (/<\/?[a-z][\s\S]*>/i.test(fallback)) {
-      const preMatch = fallback.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i)
-      const extracted = preMatch ? preMatch[1] : fallback.replace(/<[^>]+>/g, ' ')
-      const decoded = extracted.replace(/&(?:quot|apos|amp|lt|gt);/gi, (entity) => {
-        const map: Record<string, string> = {
-          '&quot;': '"',
-          '&apos;': "'",
-          '&amp;': '&',
-          '&lt;': '<',
-          '&gt;': '>',
+  const { data, statusText } = response
+  const contentType = getContentType(response.headers)
+
+  if (data === null || typeof data === 'undefined' || data === '') {
+    return statusText || GENERIC_ERROR_MESSAGE
+  }
+
+  if (typeof data === 'string') {
+    const trimmed = data.trim()
+    if (trimmed.length === 0) {
+      return statusText || GENERIC_ERROR_MESSAGE
+    }
+
+    if (contentType.includes('application/json')) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        const message = extractMessage(parsed)
+        if (message) {
+          return message
         }
-        return map[entity.toLowerCase()] ?? ' '
-      })
-      const sanitized = decoded.replace(/\s+/g, ' ').trim()
-      if (sanitized.length > 0) {
-        return sanitized
+      } catch (error) {
+        // Continuamos con el texto plano
       }
-      return GENERIC_ERROR_MESSAGE
     }
-    return fallback
+
+    if (/<\/?[a-z][\s\S]*>/i.test(trimmed)) {
+      const sanitized = sanitizeHtmlPayload(trimmed)
+      return sanitized.length > 0 ? sanitized : GENERIC_ERROR_MESSAGE
+    }
+
+    return trimmed
   }
 
-  return response.statusText || GENERIC_ERROR_MESSAGE
+  if (typeof data === 'number' || typeof data === 'boolean') {
+    return data.toString()
+  }
+
+  const message = extractMessage(data)
+  if (message) {
+    return message
+  }
+
+  return statusText || GENERIC_ERROR_MESSAGE
+}
+
+function buildNetworkErrorMessage(error: AxiosError): string {
+  if (error.message) {
+    console.error('[apiClient] request failed:', error.message)
+  }
+
+  const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+  return offline
+    ? 'Parece que estás sin conexión. Revisa tu red e intenta nuevamente.'
+    : 'No fue posible contactar al servidor de Larmone. Inténtalo nuevamente en unos minutos.'
 }
