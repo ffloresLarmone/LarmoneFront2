@@ -2,6 +2,7 @@ import { request } from './apiClient'
 import type {
   ActualizarProductoPayload,
   CrearProductoPayload,
+  ImagenProducto,
   PagedResponse,
   Producto,
 } from '../types/api'
@@ -84,5 +85,44 @@ export async function updateProduct(
 export async function deactivateProduct(id: string): Promise<Producto> {
   return request<Producto>(`/productos/${encodeURIComponent(id)}/desactivar`, {
     method: 'PATCH',
+  })
+}
+
+export interface CrearImagenProductoPayload {
+  url: string
+  alt?: string | null
+  principal?: boolean
+  orden?: number | null
+}
+
+export type ActualizarImagenProductoPayload = Partial<CrearImagenProductoPayload>
+
+export async function createProductImage(
+  productId: string,
+  payload: CrearImagenProductoPayload,
+): Promise<ImagenProducto> {
+  return request<ImagenProducto>(`/productos/${encodeURIComponent(productId)}/imagenes`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateProductImage(
+  productId: string,
+  imageId: string,
+  payload: ActualizarImagenProductoPayload,
+): Promise<ImagenProducto> {
+  return request<ImagenProducto>(
+    `/productos/${encodeURIComponent(productId)}/imagenes/${encodeURIComponent(imageId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    },
+  )
+}
+
+export async function deleteProductImage(productId: string, imageId: string): Promise<void> {
+  await request<void>(`/productos/${encodeURIComponent(productId)}/imagenes/${encodeURIComponent(imageId)}`, {
+    method: 'DELETE',
   })
 }

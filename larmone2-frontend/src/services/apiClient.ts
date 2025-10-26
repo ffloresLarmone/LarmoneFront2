@@ -170,6 +170,25 @@ async function safeParseError(response: Response): Promise<string> {
 
   const fallback = raw.trim()
   if (fallback.length > 0) {
+    if (/<\/?[a-z][\s\S]*>/i.test(fallback)) {
+      const preMatch = fallback.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i)
+      const extracted = preMatch ? preMatch[1] : fallback.replace(/<[^>]+>/g, ' ')
+      const decoded = extracted.replace(/&(?:quot|apos|amp|lt|gt);/gi, (entity) => {
+        const map: Record<string, string> = {
+          '&quot;': '"',
+          '&apos;': "'",
+          '&amp;': '&',
+          '&lt;': '<',
+          '&gt;': '>',
+        }
+        return map[entity.toLowerCase()] ?? ' '
+      })
+      const sanitized = decoded.replace(/\s+/g, ' ').trim()
+      if (sanitized.length > 0) {
+        return sanitized
+      }
+      return GENERIC_ERROR_MESSAGE
+    }
     return fallback
   }
 
