@@ -1,7 +1,31 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import ProductImageManager from '../components/products/ProductImageManager.vue'
-import type { ImagenProducto } from '../types/api'
+import type {
+  ActualizarEnvioEstadoPayload,
+  CrearProductoPayload,
+  ImagenProducto,
+  Producto,
+  ProductoAtributo,
+  ProductoCategoriaResumen,
+  Venta,
+} from '../types/api'
+import {
+  createProduct,
+  deactivateProduct,
+  fetchProductById,
+  fetchProductBySlug,
+  fetchProducts,
+  updateProduct,
+  type FetchProductsParams,
+} from '../services/productService'
+import { mapearProductosConImagenes, normalizarImagenes } from '../services/imageService'
+import {
+  cancelVenta,
+  fetchVentas,
+  updateEnvioEstado,
+  type FetchVentasParams,
+} from '../services/salesService'
 
 interface TabConfig {
   id: string
@@ -9,6 +33,9 @@ interface TabConfig {
   description: string
   icon: string
 }
+
+const PRODUCTOS_PAGE_SIZE = 8
+const VENTAS_PAGE_SIZE = 8
 
 const tabs: TabConfig[] = [
   {
@@ -38,13 +65,29 @@ const tabs: TabConfig[] = [
 ]
 
 const activeTab = ref<TabConfig['id']>('products')
-
 const activeTabConfig = computed(() => tabs.find((tab) => tab.id === activeTab.value) ?? tabs[0])
-
 const setActiveTab = (id: TabConfig['id']) => {
   activeTab.value = id
 }
 
+const productos = ref<Array<Producto & { _thumb?: string }>>([])
+const productosLoading = ref(false)
+const productosError = ref('')
+const productosPagination = reactive({
+  page: 1,
+  pageSize: PRODUCTOS_PAGE_SIZE,
+  total: 0,
+  totalPages: 0,
+})
+const productoFilters = reactive({
+  q: '',
+  soloActivos: true,
+})
+const totalProductosActivos = ref(0)
+const productoOperacionEnCurso = ref<string | null>(null)
+const productoBuscando = ref(false)
+
+const productoEnEdicion = ref<Producto | null>(null)
 const productoSeleccionado = ref<string | null>(null)
 const productoSeleccionadoModel = computed<string>({
   get: () => productoSeleccionado.value ?? '',
@@ -58,17 +101,641 @@ const productoSeleccionadoModel = computed<string>({
   },
 })
 
-const imagenesProducto = ref<ImagenProducto[]>([])
+const productoForm = reactive({
+  nombre: '',
+  slug: '',
+  descripcion: '',
+  marca: '',
+  skuBase: '',
+  precio: '',
+  activo: true,
+  destacado: false,
+  pesoGramos: '',
+  volumenMl: '',
+  categoriasTexto: '',
+  imagenesTexto: '',
+  atributosTexto: '',
+})
+const productFormSubmitting = ref(false)
+const productFormSuccess = ref('')
+const productFormError = ref('')
 
+const imagenesProducto = ref<ImagenProducto[]>([])
 const resumenImagenes = computed(() => {
   const total = imagenesProducto.value.length
   if (!total) return ''
   return `${total} ${total === 1 ? 'imagen' : 'imágenes'} registradas`
 })
 
+const ventas = ref<Venta[]>([])
+const ventasLoading = ref(false)
+const ventasError = ref('')
+const ventasFeedback = ref('')
+const ventaOperacionEnCurso = ref<string | null>(null)
+const ventasPagination = reactive({
+  page: 1,
+  pageSize: VENTAS_PAGE_SIZE,
+  total: 0,
+  totalPages: 0,
+})
+const ventasFilters = reactive({
+  estado: '',
+  q: '',
+})
+
+const estadoPredefinidos = ['CREADA', 'PAGADA', 'PENDIENTE_ENVIO', 'ENVIADA', 'ENTREGADA', 'CANCELADA']
+
+const estadosSelectOptions = computed(() => {
+  const encontrados = new Set<string>(estadoPredefinidos)
+  ventas.value.forEach((venta) => {
+    if (venta.estado) {
+      encontrados.add(venta.estado)
+    }
+  })
+  return Array.from(encontrados).map((estado) => ({
+    value: estado,
+    label: estadoLabel(estado),
+  }))
+})
+
+const metricProductosActivos = computed(() => totalProductosActivos.value)
+const metricPedidosPendientes = computed(
+  () =>
+    ventas.value.filter((venta) => venta.estado?.toLowerCase().includes('pend')).length,
+)
+const metricProductosSinImagen = computed(
+  () => productos.value.filter((producto) => !producto.imagenes?.length).length,
+)
+const metricTotalVentas = computed(() => ventasPagination.total)
+
+const formatCurrency = (value: number | undefined | null) => {
+  const amount = typeof value === 'number' && !Number.isNaN(value) ? value : 0
+  return new Intl.NumberFormat('es-CL', {
+    style: 'currency',
+    currency: 'CLP',
+    maximumFractionDigits: 0,
+  }).format(amount)
+}
+
+const formatDateTime = (iso: string | undefined | null) => {
+  if (!iso) return 'Sin fecha'
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) {
+    return iso
+  }
+  return new Intl.DateTimeFormat('es-CL', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date)
+}
+
+const estadoLabel = (estado: string | undefined | null) => {
+  if (!estado) return 'Sin estado'
+  const normalized = estado.toUpperCase()
+  const map: Record<string, string> = {
+    CREADA: 'Creada',
+    PAGADA: 'Pagada',
+    PENDIENTE_ENVIO: 'Pendiente de envío',
+    ENVIADA: 'Enviada',
+    ENTREGADA: 'Entregada',
+    CANCELADA: 'Cancelada',
+  }
+  return map[normalized] ?? estado
+}
+
+const badgeClassForEstado = (estado: string | undefined | null) => {
+  if (!estado) {
+    return 'text-bg-secondary'
+  }
+  const normalized = estado.toUpperCase()
+  const map: Record<string, string> = {
+    CREADA: 'text-bg-secondary',
+    PAGADA: 'text-bg-info',
+    PENDIENTE_ENVIO: 'text-bg-warning',
+    ENVIADA: 'text-bg-primary',
+    ENTREGADA: 'text-bg-success',
+    CANCELADA: 'text-bg-danger',
+  }
+  return map[normalized] ?? 'text-bg-secondary'
+}
+
+const resetProductoForm = () => {
+  productoForm.nombre = ''
+  productoForm.slug = ''
+  productoForm.descripcion = ''
+  productoForm.marca = ''
+  productoForm.skuBase = ''
+  productoForm.precio = ''
+  productoForm.activo = true
+  productoForm.destacado = false
+  productoForm.pesoGramos = ''
+  productoForm.volumenMl = ''
+  productoForm.categoriasTexto = ''
+  productoForm.imagenesTexto = ''
+  productoForm.atributosTexto = ''
+}
+
+const serializarCategorias = (categorias?: ProductoCategoriaResumen[]): string => {
+  if (!categorias?.length) {
+    return ''
+  }
+  return categorias
+    .map((categoria) => categoria?.categoria?.id ?? '')
+    .filter((id) => id.length > 0)
+    .join(', ')
+}
+
+const parseCategorias = (texto: string): string[] => {
+  return texto
+    .split(/[;,\n]/)
+    .map((segmento) => segmento.trim())
+    .filter((segmento) => segmento.length > 0)
+}
+
+const serializarImagenes = (imagenes?: ImagenProducto[]): string => {
+  if (!imagenes?.length) {
+    return ''
+  }
+  return imagenes
+    .map((imagen) => {
+      const partes: string[] = []
+      if (imagen.url) {
+        partes.push(imagen.url)
+      }
+      if (imagen.alt) {
+        partes.push(imagen.alt)
+      }
+      if (imagen.principal) {
+        partes.push('principal')
+      }
+      return partes.join(' | ')
+    })
+    .join('\n')
+}
+
+const parseImagenes = (texto: string): ImagenProducto[] => {
+  const lineas = texto
+    .split(/\n+/)
+    .map((linea) => linea.trim())
+    .filter((linea) => linea.length > 0)
+
+  const coincidencias = ['principal', 'principal *', 'true', '1', 'sí', 'si', 'yes']
+
+  return lineas
+    .map((linea, index) => {
+      const partes = linea.split('|').map((parte) => parte.trim())
+      const url = partes[0]
+      if (!url) {
+        return null
+      }
+      const alt = partes[1]?.length ? partes[1] : undefined
+      const principalValor = partes[2]?.toLowerCase()
+      const principal = principalValor ? coincidencias.includes(principalValor) : index === 0
+      return {
+        url,
+        alt,
+        principal,
+      }
+    })
+    .filter((imagen): imagen is ImagenProducto => imagen !== null)
+}
+
+const serializarAtributos = (atributos?: ProductoAtributo[]): string => {
+  if (!atributos?.length) {
+    return ''
+  }
+  return atributos
+    .map((atributo) => `${atributo.clave} = ${atributo.valor}`)
+    .join('\n')
+}
+
+const parseAtributos = (texto: string): ProductoAtributo[] => {
+  const lineas = texto
+    .split(/\n+/)
+    .map((linea) => linea.trim())
+    .filter((linea) => linea.length > 0)
+
+  return lineas
+    .map((linea) => {
+      const separador = linea.search(/[:=]/)
+      if (separador === -1) {
+        return null
+      }
+      const clave = linea.slice(0, separador).trim()
+      const valor = linea.slice(separador + 1).trim()
+      if (!clave || !valor) {
+        return null
+      }
+      return {
+        clave,
+        valor,
+      }
+    })
+    .filter((atributo): atributo is ProductoAtributo => atributo !== null)
+}
+
+const limpiarPayload = <T extends Record<string, unknown>>(payload: T): T => {
+  const limpio: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(payload)) {
+    if (value !== undefined) {
+      limpio[key] = value
+    }
+  }
+  return limpio as T
+}
+
 const manejarImagenesActualizadas = (imagenes: ImagenProducto[]) => {
   imagenesProducto.value = imagenes
+  if (productoEnEdicion.value && productoEnEdicion.value.id === productoSeleccionado.value) {
+    productoForm.imagenesTexto = serializarImagenes(imagenes)
+  }
 }
+
+const prepararNuevoProducto = () => {
+  productoEnEdicion.value = null
+  productoSeleccionado.value = null
+  resetProductoForm()
+  imagenesProducto.value = []
+  productFormSuccess.value = ''
+  productFormError.value = ''
+}
+
+const rellenarFormularioProducto = (producto: Producto) => {
+  productoEnEdicion.value = producto
+  productoSeleccionado.value = producto.id
+  productoForm.nombre = producto.nombre ?? ''
+  productoForm.slug = producto.slug ?? ''
+  productoForm.descripcion = producto.descripcion ?? ''
+  productoForm.marca = producto.marca ?? ''
+  productoForm.skuBase = producto.skuBase ?? ''
+  productoForm.precio = typeof producto.precio === 'number' ? producto.precio.toString() : ''
+  productoForm.activo = producto.activo ?? true
+  productoForm.destacado = producto.destacado ?? false
+  productoForm.pesoGramos =
+    typeof producto.pesoGramos === 'number' && !Number.isNaN(producto.pesoGramos)
+      ? producto.pesoGramos.toString()
+      : ''
+  productoForm.volumenMl =
+    typeof producto.volumenMl === 'number' && !Number.isNaN(producto.volumenMl)
+      ? producto.volumenMl.toString()
+      : ''
+  productoForm.categoriasTexto = serializarCategorias(producto.categorias)
+  const imagenesNormalizadas = normalizarImagenes(producto.imagenes)
+  imagenesProducto.value = imagenesNormalizadas
+  productoForm.imagenesTexto = serializarImagenes(imagenesNormalizadas)
+  productoForm.atributosTexto = serializarAtributos(producto.atributos)
+  productFormSuccess.value = ''
+  productFormError.value = ''
+}
+
+const editarProducto = (producto: Producto) => {
+  rellenarFormularioProducto(producto)
+}
+
+const refrescarMetricasProductosActivos = async () => {
+  try {
+    const respuesta = await fetchProducts({
+      page: 1,
+      pageSize: 1,
+      soloActivos: true,
+    })
+    totalProductosActivos.value = respuesta.total
+  } catch (error) {
+    console.error('No fue posible actualizar la métrica de productos activos', error)
+  }
+}
+
+const cargarProductos = async (page = productosPagination.page) => {
+  productosLoading.value = true
+  productosError.value = ''
+  try {
+    const params: FetchProductsParams = {
+      page,
+      pageSize: productosPagination.pageSize,
+      soloActivos: productoFilters.soloActivos,
+    }
+    if (productoFilters.q.trim().length > 0) {
+      params.q = productoFilters.q.trim()
+    }
+
+    const respuesta = await fetchProducts(params)
+    const items = await mapearProductosConImagenes(respuesta.items)
+    productos.value = items
+    productosPagination.page = respuesta.page
+    productosPagination.pageSize = respuesta.pageSize
+    productosPagination.total = respuesta.total
+    productosPagination.totalPages = respuesta.totalPages
+
+    if (productoFilters.soloActivos) {
+      totalProductosActivos.value = respuesta.total
+    }
+
+    if (productoEnEdicion.value) {
+      const actualizado = items.find((item) => item.id === productoEnEdicion.value?.id)
+      if (actualizado) {
+        rellenarFormularioProducto(actualizado)
+      }
+    }
+  } catch (error) {
+    productosError.value =
+      error instanceof Error
+        ? error.message
+        : 'No fue posible cargar los productos. Intenta nuevamente.'
+  } finally {
+    productosLoading.value = false
+  }
+}
+
+const aplicarFiltrosProductos = async () => {
+  productosPagination.page = 1
+  await cargarProductos(1)
+  if (!productoFilters.soloActivos) {
+    await refrescarMetricasProductosActivos()
+  }
+}
+
+const limpiarFiltrosProductos = async () => {
+  productoFilters.q = ''
+  productoFilters.soloActivos = true
+  await aplicarFiltrosProductos()
+}
+
+const cambiarPaginaProductos = async (page: number) => {
+  if (page < 1 || page > productosPagination.totalPages || productosLoading.value) {
+    return
+  }
+  await cargarProductos(page)
+}
+
+const buscarProductoPorIdentificador = async () => {
+  if (!productoSeleccionado.value) {
+    productFormError.value = 'Ingresa un identificador o slug válido para buscar el producto.'
+    return
+  }
+
+  productFormError.value = ''
+  productFormSuccess.value = ''
+  productoBuscando.value = true
+
+  try {
+    let producto: Producto
+    try {
+      producto = await fetchProductById(productoSeleccionado.value)
+    } catch (error) {
+      producto = await fetchProductBySlug(productoSeleccionado.value)
+    }
+    const normalizado = {
+      ...producto,
+      imagenes: normalizarImagenes(producto.imagenes),
+    }
+    rellenarFormularioProducto(normalizado)
+    productFormSuccess.value = 'Producto cargado correctamente desde la API.'
+  } catch (error) {
+    productFormError.value =
+      error instanceof Error
+        ? error.message
+        : 'No fue posible recuperar el producto solicitado.'
+  } finally {
+    productoBuscando.value = false
+  }
+}
+
+const onSubmitProducto = async () => {
+  productFormError.value = ''
+  productFormSuccess.value = ''
+
+  const precio = Number(productoForm.precio)
+  if (!productoForm.nombre.trim()) {
+    productFormError.value = 'El nombre del producto es obligatorio.'
+    return
+  }
+  if (!productoForm.slug.trim()) {
+    productFormError.value = 'El slug del producto es obligatorio.'
+    return
+  }
+  if (Number.isNaN(precio)) {
+    productFormError.value = 'Debes ingresar un precio válido.'
+    return
+  }
+
+  const categorias = parseCategorias(productoForm.categoriasTexto)
+  const imagenes = parseImagenes(productoForm.imagenesTexto)
+  const atributos = parseAtributos(productoForm.atributosTexto)
+
+  const payloadBase: CrearProductoPayload = {
+    nombre: productoForm.nombre.trim(),
+    slug: productoForm.slug.trim(),
+    descripcion: productoForm.descripcion.trim() || undefined,
+    marca: productoForm.marca.trim() || undefined,
+    skuBase: productoForm.skuBase.trim() || undefined,
+    precio,
+    activo: productoForm.activo,
+    destacado: productoForm.destacado,
+    pesoGramos:
+      productoForm.pesoGramos.trim().length > 0
+        ? Number(productoForm.pesoGramos)
+        : undefined,
+    volumenMl:
+      productoForm.volumenMl.trim().length > 0
+        ? Number(productoForm.volumenMl)
+        : undefined,
+    categorias: categorias.length ? categorias : undefined,
+    imagenes: imagenes.length ? imagenes : undefined,
+    atributos: atributos.length ? atributos : undefined,
+  }
+
+  const payload = limpiarPayload(payloadBase)
+
+  productFormSubmitting.value = true
+  try {
+    let respuesta: Producto
+    if (productoEnEdicion.value) {
+      respuesta = await updateProduct(productoEnEdicion.value.id, payload)
+      productFormSuccess.value = 'Producto actualizado correctamente.'
+    } else {
+      respuesta = await createProduct(payload)
+      productFormSuccess.value = 'Producto creado correctamente.'
+    }
+
+    const normalizado = {
+      ...respuesta,
+      imagenes: normalizarImagenes(respuesta.imagenes),
+    }
+    rellenarFormularioProducto(normalizado)
+    await cargarProductos(productoEnEdicion.value ? productosPagination.page : 1)
+    await refrescarMetricasProductosActivos()
+  } catch (error) {
+    productFormError.value =
+      error instanceof Error
+        ? error.message
+        : 'No fue posible guardar el producto. Intenta nuevamente.'
+  } finally {
+    productFormSubmitting.value = false
+  }
+}
+
+const desactivarProducto = async (producto: Producto) => {
+  if (!producto.activo) {
+    productFormSuccess.value = 'El producto ya se encuentra inactivo.'
+    return
+  }
+
+  const confirmar = window.confirm(
+    `¿Deseas desactivar el producto "${producto.nombre}"? Esta acción ocultará el producto del catálogo.`,
+  )
+  if (!confirmar) {
+    return
+  }
+
+  productoOperacionEnCurso.value = producto.id
+  productFormError.value = ''
+  productFormSuccess.value = ''
+
+  try {
+    const respuesta = await deactivateProduct(producto.id)
+    productFormSuccess.value = `Producto "${respuesta.nombre}" desactivado correctamente.`
+    if (productoEnEdicion.value?.id === producto.id) {
+      productoEnEdicion.value = { ...productoEnEdicion.value, activo: false }
+      productoForm.activo = false
+    }
+    await cargarProductos(productosPagination.page)
+    await refrescarMetricasProductosActivos()
+  } catch (error) {
+    productFormError.value =
+      error instanceof Error
+        ? error.message
+        : 'No fue posible desactivar el producto. Intenta nuevamente.'
+  } finally {
+    productoOperacionEnCurso.value = null
+  }
+}
+
+const cargarVentas = async (page = ventasPagination.page) => {
+  ventasLoading.value = true
+  ventasError.value = ''
+  ventasFeedback.value = ''
+  try {
+    const params: FetchVentasParams = {
+      page,
+      pageSize: ventasPagination.pageSize,
+    }
+    if (ventasFilters.estado) {
+      params.estado = ventasFilters.estado
+    }
+    if (ventasFilters.q.trim().length > 0) {
+      params.q = ventasFilters.q.trim()
+    }
+
+    const respuesta = await fetchVentas(params)
+    ventas.value = respuesta.items
+    ventasPagination.page = respuesta.page
+    ventasPagination.pageSize = respuesta.pageSize
+    ventasPagination.total = respuesta.total
+    ventasPagination.totalPages = respuesta.totalPages
+  } catch (error) {
+    ventasError.value =
+      error instanceof Error
+        ? error.message
+        : 'No fue posible cargar los pedidos. Intenta nuevamente.'
+  } finally {
+    ventasLoading.value = false
+  }
+}
+
+const aplicarFiltrosVentas = async () => {
+  ventasPagination.page = 1
+  await cargarVentas(1)
+}
+
+const limpiarFiltrosVentas = async () => {
+  ventasFilters.estado = ''
+  ventasFilters.q = ''
+  await aplicarFiltrosVentas()
+}
+
+const cambiarPaginaVentas = async (page: number) => {
+  if (page < 1 || page > ventasPagination.totalPages || ventasLoading.value) {
+    return
+  }
+  await cargarVentas(page)
+}
+
+const cancelarPedido = async (venta: Venta) => {
+  const referencia = venta.numero ?? venta.id
+  const confirmacion = window.confirm(`¿Deseas cancelar el pedido ${referencia}?`)
+  if (!confirmacion) {
+    return
+  }
+
+  const motivo = window.prompt('Motivo de cancelación (opcional):', '') ?? ''
+  ventaOperacionEnCurso.value = venta.id
+  ventasFeedback.value = ''
+  ventasError.value = ''
+
+  try {
+    const payload = motivo.trim().length ? { motivo: motivo.trim() } : {}
+    await cancelVenta(venta.id, payload)
+    ventasFeedback.value = `Pedido ${referencia} cancelado correctamente.`
+    await cargarVentas(ventasPagination.page)
+  } catch (error) {
+    ventasError.value =
+      error instanceof Error
+        ? error.message
+        : 'No fue posible cancelar el pedido. Intenta nuevamente.'
+  } finally {
+    ventaOperacionEnCurso.value = null
+  }
+}
+
+const actualizarEstadoEnvioPedido = async (venta: Venta) => {
+  if (!venta.envio?.id) {
+    ventasFeedback.value = 'Este pedido no tiene un envío registrado para actualizar.'
+    return
+  }
+
+  const nuevoEstado = window.prompt(
+    'Ingresa el nuevo estado logístico del envío:',
+    venta.envio.estado ?? '',
+  )
+  if (!nuevoEstado || nuevoEstado.trim().length === 0) {
+    return
+  }
+
+  const detalle = window.prompt('Detalle adicional (opcional):', '') ?? ''
+  const ubicacion = window.prompt('Ubicación (opcional):', '') ?? ''
+
+  const payload: ActualizarEnvioEstadoPayload = {
+    estado: nuevoEstado.trim(),
+  }
+  if (detalle.trim().length > 0) {
+    payload.detalle = detalle.trim()
+  }
+  if (ubicacion.trim().length > 0) {
+    payload.ubicacion = ubicacion.trim()
+  }
+
+  ventaOperacionEnCurso.value = venta.id
+  ventasFeedback.value = ''
+  ventasError.value = ''
+
+  try {
+    await updateEnvioEstado(venta.envio.id, payload)
+    ventasFeedback.value = 'Estado del envío actualizado correctamente.'
+    await cargarVentas(ventasPagination.page)
+  } catch (error) {
+    ventasError.value =
+      error instanceof Error
+        ? error.message
+        : 'No fue posible actualizar el estado del envío. Intenta nuevamente.'
+  } finally {
+    ventaOperacionEnCurso.value = null
+  }
+}
+
+onMounted(async () => {
+  await refrescarMetricasProductosActivos()
+  await Promise.all([cargarProductos(1), cargarVentas(1)])
+})
 </script>
 
 <template>
@@ -92,22 +759,29 @@ const manejarImagenesActualizadas = (imagenes: ImagenProducto[]) => {
                   <div class="col-6">
                     <div class="metric-tile rounded-3 p-3">
                       <p class="small text-uppercase text-muted mb-1">Productos activos</p>
-                      <p class="h4 fw-bold mb-0">128</p>
+                      <p class="h4 fw-bold mb-0">{{ metricProductosActivos }}</p>
                     </div>
                   </div>
                   <div class="col-6">
                     <div class="metric-tile rounded-3 p-3">
                       <p class="small text-uppercase text-muted mb-1">Pedidos pendientes</p>
-                      <p class="h4 fw-bold mb-0">14</p>
+                      <p class="h4 fw-bold mb-0">{{ metricPedidosPendientes }}</p>
                     </div>
                   </div>
                   <div class="col-12">
-                    <div class="metric-tile rounded-3 p-3">
-                      <p class="small text-uppercase text-muted mb-1">Actualización requerida</p>
-                      <p class="mb-0 d-flex align-items-center gap-2">
-                        <i class="bi bi-upload"></i>
-                        Subir fotos a 6 productos
-                      </p>
+                    <div class="metric-tile rounded-3 p-3 d-flex justify-content-between align-items-center">
+                      <div>
+                        <p class="small text-uppercase text-muted mb-1">Actualización requerida</p>
+                        <p class="mb-0 d-flex align-items-center gap-2">
+                          <i class="bi bi-upload"></i>
+                          <span v-if="metricProductosSinImagen">
+                            Subir fotos a {{ metricProductosSinImagen }}
+                            {{ metricProductosSinImagen === 1 ? 'producto' : 'productos' }}
+                          </span>
+                          <span v-else>No hay pendientes de imágenes</span>
+                        </p>
+                      </div>
+                      <span class="badge text-bg-light text-muted">Pedidos: {{ metricTotalVentas }}</span>
                     </div>
                   </div>
                 </div>
@@ -146,79 +820,206 @@ const manejarImagenesActualizadas = (imagenes: ImagenProducto[]) => {
         <div class="card-body p-4 p-lg-5">
           <div v-if="activeTab === 'products'" class="tab-panel" role="tabpanel">
             <div class="row g-4">
+              <div class="col-12">
+                <section class="panel">
+                  <form class="row g-3 align-items-end" @submit.prevent="aplicarFiltrosProductos">
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Buscar producto</label>
+                      <input
+                        type="search"
+                        class="form-control"
+                        placeholder="Nombre, SKU o slug"
+                        v-model="productoFilters.q"
+                      />
+                    </div>
+                    <div class="col-12 col-md-3">
+                      <label class="form-label">Solo activos</label>
+                      <div class="form-check form-switch">
+                        <input
+                          class="form-check-input"
+                          type="checkbox"
+                          id="soloActivos"
+                          v-model="productoFilters.soloActivos"
+                        />
+                        <label class="form-check-label" for="soloActivos">
+                          {{ productoFilters.soloActivos ? 'Mostrando activos' : 'Incluyendo inactivos' }}
+                        </label>
+                      </div>
+                    </div>
+                    <div class="col-12 col-md-3 d-flex gap-2">
+                      <button type="submit" class="btn btn-primary flex-grow-1">
+                        <i class="bi bi-search me-1"></i>
+                        Aplicar filtros
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary" @click="limpiarFiltrosProductos">
+                        Limpiar
+                      </button>
+                    </div>
+                  </form>
+                </section>
+              </div>
+
               <div class="col-12 col-xl-6">
                 <section class="panel h-100">
-                  <header class="d-flex justify-content-between align-items-center mb-3">
-                    <h3 class="h5 mb-0">Ficha de producto</h3>
-                    <button class="btn btn-sm btn-outline-primary">
-                      <i class="bi bi-plus-lg me-1"></i>
-                      Nuevo producto
-                    </button>
+                  <header class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <div>
+                      <h3 class="h5 mb-0">
+                        {{ productoEnEdicion ? 'Editar producto' : 'Crear producto' }}
+                      </h3>
+                      <p class="text-muted small mb-0">
+                        Completa los campos y sincroniza la ficha con el catálogo público.
+                      </p>
+                    </div>
+                    <div class="d-flex gap-2">
+                      <button type="button" class="btn btn-sm btn-outline-secondary" @click="prepararNuevoProducto">
+                        <i class="bi bi-plus-lg me-1"></i>
+                        Nuevo
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-outline-primary"
+                        :disabled="productoBuscando || !productoSeleccionado"
+                        @click="buscarProductoPorIdentificador"
+                      >
+                        <span
+                          v-if="productoBuscando"
+                          class="spinner-border spinner-border-sm me-2"
+                          role="status"
+                          aria-hidden="true"
+                        ></span>
+                        Cargar
+                      </button>
+                    </div>
                   </header>
-                  <form class="row g-3">
+
+                  <div v-if="productFormSuccess" class="alert alert-success" role="status">
+                    {{ productFormSuccess }}
+                  </div>
+                  <div v-if="productFormError" class="alert alert-danger" role="alert">
+                    {{ productFormError }}
+                  </div>
+
+                  <form class="row g-3" @submit.prevent="onSubmitProducto">
                     <div class="col-12 col-md-6">
-                      <label class="form-label">ID del producto</label>
+                      <label class="form-label">Identificador o slug</label>
                       <input
                         type="text"
                         class="form-control"
-                        placeholder="Ej: prod-123"
+                        placeholder="Ej: prod-123 o vestido-aurora"
                         v-model="productoSeleccionadoModel"
                       />
                       <small class="text-muted d-block mt-1">
-                        Ingresa el identificador o slug expuesto por la API para consultar las imágenes.
+                        Ingresa el identificador expuesto por la API para cargarlo en el panel.
                       </small>
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Slug público</label>
+                      <input
+                        type="text"
+                        class="form-control"
+                        placeholder="Ej: vestido-aurora"
+                        v-model="productoForm.slug"
+                        required
+                      />
                     </div>
                     <div class="col-12">
                       <label class="form-label">Nombre</label>
-                      <input type="text" class="form-control" placeholder="Ej: Vestido seda Aurora" />
+                      <input
+                        type="text"
+                        class="form-control"
+                        placeholder="Ej: Vestido seda Aurora"
+                        v-model="productoForm.nombre"
+                        required
+                      />
                     </div>
                     <div class="col-12">
                       <label class="form-label">Descripción</label>
-                      <textarea class="form-control" rows="3" placeholder="Detalles del producto"></textarea>
+                      <textarea
+                        class="form-control"
+                        rows="3"
+                        placeholder="Detalle del producto"
+                        v-model="productoForm.descripcion"
+                      ></textarea>
                     </div>
                     <div class="col-12 col-md-6">
-                      <label class="form-label">Precio base</label>
+                      <label class="form-label">Marca</label>
+                      <input type="text" class="form-control" v-model="productoForm.marca" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">SKU base</label>
+                      <input type="text" class="form-control" v-model="productoForm.skuBase" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label">Precio</label>
                       <div class="input-group">
                         <span class="input-group-text">$</span>
-                        <input type="number" min="0" class="form-control" placeholder="0" />
+                        <input type="number" min="0" class="form-control" v-model="productoForm.precio" required />
                       </div>
                     </div>
                     <div class="col-12 col-md-6">
-                      <label class="form-label">Descuento (%)</label>
-                      <input type="number" min="0" max="100" class="form-control" placeholder="Ej: 10" />
+                      <label class="form-label">Peso (gramos)</label>
+                      <input type="number" min="0" class="form-control" v-model="productoForm.pesoGramos" />
                     </div>
                     <div class="col-12 col-md-6">
-                      <label class="form-label">Inventario total</label>
-                      <input type="number" min="0" class="form-control" placeholder="Ej: 50" />
+                      <label class="form-label">Volumen (ml)</label>
+                      <input type="number" min="0" class="form-control" v-model="productoForm.volumenMl" />
                     </div>
                     <div class="col-12 col-md-6">
-                      <label class="form-label">Stock disponible</label>
-                      <input type="number" min="0" class="form-control" placeholder="Ej: 48" />
-                    </div>
-                    <div class="col-12">
-                      <label class="form-label">Etiquetas para filtros</label>
-                      <input type="text" class="form-control" placeholder="Ej: fiesta, seda, colección verano" />
-                    </div>
-                    <div class="col-12">
-                      <label class="form-label">Visibilidad</label>
+                      <label class="form-label d-block">Estado</label>
                       <div class="d-flex flex-wrap gap-3">
-                        <div class="form-check">
-                          <input class="form-check-input" type="radio" name="visibility" id="visible" checked />
-                          <label class="form-check-label" for="visible">Visible</label>
+                        <div class="form-check form-switch">
+                          <input
+                            class="form-check-input"
+                            type="checkbox"
+                            id="activo"
+                            v-model="productoForm.activo"
+                          />
+                          <label class="form-check-label" for="activo">Activo</label>
                         </div>
-                        <div class="form-check">
-                          <input class="form-check-input" type="radio" name="visibility" id="hidden" />
-                          <label class="form-check-label" for="hidden">Oculto</label>
-                        </div>
-                        <div class="form-check">
-                          <input class="form-check-input" type="radio" name="visibility" id="blocked" />
-                          <label class="form-check-label" for="blocked">Bloqueado</label>
+                        <div class="form-check form-switch">
+                          <input
+                            class="form-check-input"
+                            type="checkbox"
+                            id="destacado"
+                            v-model="productoForm.destacado"
+                          />
+                          <label class="form-check-label" for="destacado">Destacado</label>
                         </div>
                       </div>
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label">Categorías (IDs separadas por coma)</label>
+                      <textarea
+                        class="form-control"
+                        rows="2"
+                        placeholder="cat-verano, cat-novedades"
+                        v-model="productoForm.categoriasTexto"
+                      ></textarea>
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label">Imágenes (una por línea: URL | alt | principal)</label>
+                      <textarea
+                        class="form-control"
+                        rows="4"
+                        placeholder="https://.../imagen.jpg | Frente | principal"
+                        v-model="productoForm.imagenesTexto"
+                      ></textarea>
+                      <small class="text-muted d-block mt-1">
+                        Marca la imagen principal con "principal". Si no se indica, la primera imagen será principal.
+                      </small>
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label">Atributos (clave = valor por línea)</label>
+                      <textarea
+                        class="form-control"
+                        rows="3"
+                        placeholder="tipoPiel = seca"
+                        v-model="productoForm.atributosTexto"
+                      ></textarea>
                     </div>
                     <div class="col-12">
                       <label class="form-label d-flex justify-content-between align-items-center">
-                        Imágenes del producto
+                        Imágenes registradas
                         <span v-if="resumenImagenes" class="badge bg-light text-muted">{{ resumenImagenes }}</span>
                       </label>
                       <ProductImageManager
@@ -227,71 +1028,140 @@ const manejarImagenesActualizadas = (imagenes: ImagenProducto[]) => {
                       />
                     </div>
                     <div class="col-12 d-flex gap-2">
-                      <button type="submit" class="btn btn-primary">Guardar cambios</button>
-                      <button type="reset" class="btn btn-outline-secondary">Descartar</button>
+                      <button type="submit" class="btn btn-primary" :disabled="productFormSubmitting">
+                        <span
+                          v-if="productFormSubmitting"
+                          class="spinner-border spinner-border-sm me-2"
+                          role="status"
+                          aria-hidden="true"
+                        ></span>
+                        Guardar cambios
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary" @click="prepararNuevoProducto">
+                        Limpiar
+                      </button>
                     </div>
                   </form>
                 </section>
               </div>
+
               <div class="col-12 col-xl-6">
                 <section class="panel h-100">
                   <header class="d-flex justify-content-between align-items-center mb-3">
                     <h3 class="h5 mb-0">Control de inventario</h3>
-                    <button class="btn btn-sm btn-outline-secondary">
+                    <button class="btn btn-sm btn-outline-secondary" type="button" @click="cargarProductos()">
                       <i class="bi bi-arrow-repeat me-1"></i>
-                      Sincronizar
+                      Actualizar
                     </button>
                   </header>
-                  <div class="table-responsive">
-                    <table class="table align-middle">
-                      <thead>
-                        <tr>
-                          <th scope="col">Producto</th>
-                          <th scope="col" class="text-end">Stock</th>
-                          <th scope="col" class="text-end">Bloqueado</th>
-                          <th scope="col" class="text-end">Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td>
-                            <p class="fw-semibold mb-0">Vestido Aurora</p>
-                            <small class="text-muted">SKU: AUR-001</small>
-                          </td>
-                          <td class="text-end">24</td>
-                          <td class="text-end">0</td>
-                          <td class="text-end">
-                            <button class="btn btn-sm btn-link">Editar</button>
-                          </td>
-                        </tr>
-                        <tr>
-                          <td>
-                            <p class="fw-semibold mb-0">Blusa Coral</p>
-                            <small class="text-muted">SKU: COR-014</small>
-                          </td>
-                          <td class="text-end">12</td>
-                          <td class="text-end">4</td>
-                          <td class="text-end">
-                            <button class="btn btn-sm btn-link">Editar</button>
-                          </td>
-                        </tr>
-                        <tr>
-                          <td>
-                            <p class="fw-semibold mb-0">Chaqueta Boreal</p>
-                            <small class="text-muted">SKU: BOR-209</small>
-                          </td>
-                          <td class="text-end">6</td>
-                          <td class="text-end">2</td>
-                          <td class="text-end">
-                            <button class="btn btn-sm btn-link">Editar</button>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
+
+                  <div v-if="productosLoading" class="text-center py-5" role="status">
+                    <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+                    <p class="mt-3 mb-0">Cargando productos…</p>
                   </div>
-                  <div class="alert alert-info mt-3" role="alert">
-                    <i class="bi bi-info-circle me-2"></i>
-                    Ajusta el inventario para sincronizarlo con el stock disponible en tienda física.
+
+                  <div v-else>
+                    <div v-if="productosError" class="alert alert-danger" role="alert">{{ productosError }}</div>
+
+                    <div v-else>
+                      <div v-if="productos.length === 0" class="alert alert-light border text-center" role="status">
+                        sin registros para mostrar.
+                      </div>
+
+                      <div v-else class="table-responsive">
+                        <table class="table align-middle">
+                          <thead>
+                            <tr>
+                              <th scope="col">Producto</th>
+                              <th scope="col" class="text-end">Precio</th>
+                              <th scope="col" class="text-end">Stock</th>
+                              <th scope="col" class="text-end">Estado</th>
+                              <th scope="col" class="text-end">Acciones</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="producto in productos" :key="producto.id">
+                              <td>
+                                <div class="d-flex align-items-center gap-3">
+                                  <img
+                                    v-if="producto._thumb"
+                                    :src="producto._thumb"
+                                    alt="Miniatura"
+                                    class="rounded"
+                                    width="48"
+                                    height="48"
+                                  />
+                                  <div>
+                                    <p class="fw-semibold mb-0">{{ producto.nombre }}</p>
+                                    <small class="text-muted">SKU: {{ producto.skuBase || '—' }}</small>
+                                  </div>
+                                </div>
+                              </td>
+                              <td class="text-end">{{ formatCurrency(producto.precio) }}</td>
+                              <td class="text-end">{{ producto.stockTotal ?? '—' }}</td>
+                              <td class="text-end">
+                                <span
+                                  class="badge"
+                                  :class="producto.activo ? 'text-bg-success' : 'text-bg-secondary'"
+                                >
+                                  {{ producto.activo ? 'Activo' : 'Inactivo' }}
+                                </span>
+                              </td>
+                              <td class="text-end">
+                                <div class="d-flex justify-content-end gap-2">
+                                  <button class="btn btn-sm btn-outline-primary" type="button" @click="editarProducto(producto)">
+                                    Editar
+                                  </button>
+                                  <button
+                                    class="btn btn-sm btn-outline-danger"
+                                    type="button"
+                                    :disabled="productoOperacionEnCurso === producto.id || !producto.activo"
+                                    @click="desactivarProducto(producto)"
+                                  >
+                                    <span
+                                      v-if="productoOperacionEnCurso === producto.id"
+                                      class="spinner-border spinner-border-sm me-1"
+                                      role="status"
+                                      aria-hidden="true"
+                                    ></span>
+                                    Desactivar
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <nav
+                        v-if="productosPagination.totalPages > 1"
+                        class="d-flex justify-content-between align-items-center mt-3"
+                        aria-label="Paginación de productos"
+                      >
+                        <button
+                          class="btn btn-sm btn-outline-secondary"
+                          type="button"
+                          :disabled="productosPagination.page === 1 || productosLoading"
+                          @click="cambiarPaginaProductos(productosPagination.page - 1)"
+                        >
+                          Anterior
+                        </button>
+                        <span class="text-muted small">
+                          Página {{ productosPagination.page }} de {{ productosPagination.totalPages }}
+                        </span>
+                        <button
+                          class="btn btn-sm btn-outline-secondary"
+                          type="button"
+                          :disabled="
+                            productosPagination.page === productosPagination.totalPages || productosLoading
+                          "
+                          @click="cambiarPaginaProductos(productosPagination.page + 1)"
+                        >
+                          Siguiente
+                        </button>
+                      </nav>
+                      <p class="text-muted small mt-2 mb-0">Total registros: {{ productosPagination.total }}</p>
+                    </div>
                   </div>
                 </section>
               </div>
@@ -303,32 +1173,35 @@ const manejarImagenesActualizadas = (imagenes: ImagenProducto[]) => {
               <div class="col-12 col-xl-4">
                 <section class="panel h-100">
                   <h3 class="h5 mb-3">Filtros rápidos</h3>
-                  <div class="d-grid gap-3">
+                  <form class="d-grid gap-3" @submit.prevent="aplicarFiltrosVentas">
                     <div>
-                      <label class="form-label">Buscar por cliente</label>
-                      <input type="search" class="form-control" placeholder="Nombre, correo o RUT" />
+                      <label class="form-label">Buscar por cliente o referencia</label>
+                      <input
+                        type="search"
+                        class="form-control"
+                        placeholder="Nombre, correo o referencia"
+                        v-model="ventasFilters.q"
+                      />
                     </div>
                     <div>
                       <label class="form-label">Estado del pedido</label>
-                      <select class="form-select">
-                        <option>Pendiente de envío</option>
-                        <option>Creado</option>
-                        <option>Enviado</option>
-                        <option>Cerrado</option>
+                      <select class="form-select" v-model="ventasFilters.estado">
+                        <option value="">Todos los estados</option>
+                        <option v-for="estado in estadosSelectOptions" :key="estado.value" :value="estado.value">
+                          {{ estado.label }}
+                        </option>
                       </select>
                     </div>
-                    <div>
-                      <label class="form-label">Rango de fechas</label>
-                      <div class="row g-2">
-                        <div class="col-6">
-                          <input type="date" class="form-control" />
-                        </div>
-                        <div class="col-6">
-                          <input type="date" class="form-control" />
-                        </div>
-                      </div>
+                    <div class="d-flex gap-2">
+                      <button type="submit" class="btn btn-primary flex-grow-1">Aplicar filtros</button>
+                      <button type="button" class="btn btn-outline-secondary" @click="limpiarFiltrosVentas">
+                        Limpiar
+                      </button>
                     </div>
-                    <button class="btn btn-primary">Aplicar filtros</button>
+                  </form>
+                  <div class="alert alert-info mt-4" role="status">
+                    <i class="bi bi-info-circle me-2"></i>
+                    Puedes refinar la búsqueda por estado logístico o referencia de pago para agilizar las gestiones.
                   </div>
                 </section>
               </div>
@@ -336,80 +1209,119 @@ const manejarImagenesActualizadas = (imagenes: ImagenProducto[]) => {
                 <section class="panel h-100">
                   <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
                     <h3 class="h5 mb-0">Pedidos recientes</h3>
-                    <button class="btn btn-sm btn-outline-secondary">
+                    <button class="btn btn-sm btn-outline-secondary" type="button" @click="cargarVentas()">
                       <i class="bi bi-arrow-clockwise me-1"></i>
                       Actualizar lista
                     </button>
                   </div>
-                  <div class="list-group order-list">
-                    <article class="list-group-item list-group-item-action flex-column align-items-start">
-                      <div class="d-flex w-100 justify-content-between flex-wrap gap-2">
-                        <div>
-                          <h4 class="h6 mb-1">Pedido #10231</h4>
-                          <p class="mb-1 text-muted">Cliente: Ana Rojas · ana@correo.cl</p>
+
+                  <div v-if="ventasFeedback" class="alert alert-success" role="status">{{ ventasFeedback }}</div>
+                  <div v-if="ventasError" class="alert alert-danger" role="alert">{{ ventasError }}</div>
+
+                  <div v-if="ventasLoading" class="text-center py-5" role="status">
+                    <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+                    <p class="mt-3 mb-0">Cargando pedidos…</p>
+                  </div>
+
+                  <div v-else>
+                    <div v-if="ventas.length === 0" class="alert alert-light border text-center" role="status">
+                      sin registros para mostrar.
+                    </div>
+
+                    <div v-else class="list-group order-list">
+                      <article
+                        v-for="venta in ventas"
+                        :key="venta.id"
+                        class="list-group-item list-group-item-action flex-column align-items-start"
+                      >
+                        <div class="d-flex w-100 justify-content-between flex-wrap gap-2">
+                          <div>
+                            <h4 class="h6 mb-1">Pedido #{{ venta.numero ?? venta.id }}</h4>
+                            <p class="mb-1 text-muted">
+                              Cliente:
+                              <span>{{ venta.usuario?.nombre ?? 'Sin nombre' }}</span>
+                              <span v-if="venta.usuario?.email"> · {{ venta.usuario.email }}</span>
+                            </p>
+                            <p class="mb-1 text-muted small">Creado: {{ formatDateTime(venta.createdAt) }}</p>
+                          </div>
+                          <span
+                            class="badge rounded-pill align-self-center"
+                            :class="badgeClassForEstado(venta.estado)"
+                          >
+                            {{ estadoLabel(venta.estado) }}
+                          </span>
                         </div>
-                        <span class="badge rounded-pill text-bg-warning align-self-center">Pendiente de envío</span>
-                      </div>
-                      <p class="mb-2">Total pagado: $149.990 · 3 productos</p>
-                      <div class="d-flex flex-wrap gap-2">
-                        <button class="btn btn-sm btn-outline-primary">
-                          <i class="bi bi-truck me-1"></i>
-                          Marcar como enviado
-                        </button>
-                        <button class="btn btn-sm btn-outline-secondary">
-                          <i class="bi bi-person-vcard me-1"></i>
-                          Ver datos del cliente
-                        </button>
-                        <button class="btn btn-sm btn-outline-secondary">
-                          <i class="bi bi-file-earmark-arrow-up me-1"></i>
-                          Cargar boleta/factura
-                        </button>
-                      </div>
-                    </article>
-                    <article class="list-group-item list-group-item-action flex-column align-items-start">
-                      <div class="d-flex w-100 justify-content-between flex-wrap gap-2">
-                        <div>
-                          <h4 class="h6 mb-1">Pedido #10224</h4>
-                          <p class="mb-1 text-muted">Cliente: Claudia Díaz · claudiadiaz@mail.com</p>
+                        <p class="mb-2">
+                          Total pagado: {{ formatCurrency(venta.total) }} · {{ venta.items.length }}
+                          {{ venta.items.length === 1 ? 'producto' : 'productos' }}
+                        </p>
+                        <ul class="list-unstyled mb-3 small text-muted" v-if="venta.items.length">
+                          <li v-for="item in venta.items" :key="item.id">
+                            {{ item.cantidad }}× {{ item.nombre ?? item.productoId }} —
+                            {{ formatCurrency(item.subtotal) }}
+                          </li>
+                        </ul>
+                        <div class="d-flex flex-wrap gap-2">
+                          <button
+                            class="btn btn-sm btn-outline-primary"
+                            type="button"
+                            :disabled="ventaOperacionEnCurso === venta.id || !venta.envio?.id"
+                            @click="actualizarEstadoEnvioPedido(venta)"
+                          >
+                            <span
+                              v-if="ventaOperacionEnCurso === venta.id && venta.envio?.id"
+                              class="spinner-border spinner-border-sm me-1"
+                              role="status"
+                              aria-hidden="true"
+                            ></span>
+                            <i class="bi bi-truck me-1"></i>
+                            Actualizar envío
+                          </button>
+                          <button
+                            class="btn btn-sm btn-outline-danger"
+                            type="button"
+                            :disabled="ventaOperacionEnCurso === venta.id"
+                            @click="cancelarPedido(venta)"
+                          >
+                            <span
+                              v-if="ventaOperacionEnCurso === venta.id"
+                              class="spinner-border spinner-border-sm me-1"
+                              role="status"
+                              aria-hidden="true"
+                            ></span>
+                            <i class="bi bi-x-circle me-1"></i>
+                            Cancelar pedido
+                          </button>
                         </div>
-                        <span class="badge rounded-pill text-bg-success align-self-center">Enviado</span>
-                      </div>
-                      <p class="mb-2">Total pagado: $89.990 · 1 producto</p>
-                      <div class="d-flex flex-wrap gap-2">
-                        <button class="btn btn-sm btn-outline-secondary">
-                          <i class="bi bi-person-vcard me-1"></i>
-                          Ver datos del cliente
-                        </button>
-                        <button class="btn btn-sm btn-outline-secondary">
-                          <i class="bi bi-file-earmark-arrow-up me-1"></i>
-                          Adjuntar documento
-                        </button>
-                        <button class="btn btn-sm btn-outline-secondary">
-                          <i class="bi bi-check2-circle me-1"></i>
-                          Cerrar pedido
-                        </button>
-                      </div>
-                    </article>
-                    <article class="list-group-item list-group-item-action flex-column align-items-start">
-                      <div class="d-flex w-100 justify-content-between flex-wrap gap-2">
-                        <div>
-                          <h4 class="h6 mb-1">Pedido #10212</h4>
-                          <p class="mb-1 text-muted">Cliente: Felipe Morales · felipe@ejemplo.com</p>
-                        </div>
-                        <span class="badge rounded-pill text-bg-secondary align-self-center">Cerrado</span>
-                      </div>
-                      <p class="mb-2">Total pagado: $59.990 · 2 productos</p>
-                      <div class="d-flex flex-wrap gap-2">
-                        <button class="btn btn-sm btn-outline-secondary">
-                          <i class="bi bi-receipt me-1"></i>
-                          Ver detalle
-                        </button>
-                        <button class="btn btn-sm btn-outline-secondary">
-                          <i class="bi bi-file-earmark-arrow-up me-1"></i>
-                          Actualizar documento
-                        </button>
-                      </div>
-                    </article>
+                      </article>
+                    </div>
+
+                    <nav
+                      v-if="ventasPagination.totalPages > 1"
+                      class="d-flex justify-content-between align-items-center mt-3"
+                      aria-label="Paginación de pedidos"
+                    >
+                      <button
+                        class="btn btn-sm btn-outline-secondary"
+                        type="button"
+                        :disabled="ventasPagination.page === 1 || ventasLoading"
+                        @click="cambiarPaginaVentas(ventasPagination.page - 1)"
+                      >
+                        Anterior
+                      </button>
+                      <span class="text-muted small">
+                        Página {{ ventasPagination.page }} de {{ ventasPagination.totalPages }}
+                      </span>
+                      <button
+                        class="btn btn-sm btn-outline-secondary"
+                        type="button"
+                        :disabled="ventasPagination.page === ventasPagination.totalPages || ventasLoading"
+                        @click="cambiarPaginaVentas(ventasPagination.page + 1)"
+                      >
+                        Siguiente
+                      </button>
+                    </nav>
+                    <p class="text-muted small mt-2 mb-0">Total pedidos: {{ ventasPagination.total }}</p>
                   </div>
                 </section>
               </div>
