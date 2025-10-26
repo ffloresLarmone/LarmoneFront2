@@ -60,7 +60,7 @@
 import { computed, ref, watch } from 'vue'
 import { fetchProductById, fetchProductBySlug } from '../../services/productService'
 import type { ImagenProducto } from '../../types/api'
-import { FALLBACK_IMAGE } from '../../services/imageService'
+import { FALLBACK_IMAGE, normalizarImagenes } from '../../services/imageService'
 
 const fallbackThumbnail = FALLBACK_IMAGE
 
@@ -101,7 +101,7 @@ async function cargarImagenes(idProducto: string) {
     } catch (error) {
       producto = await fetchProductBySlug(idProducto)
     }
-    imagenes.value = producto.imagenes ?? []
+    imagenes.value = normalizarImagenes(producto.imagenes)
     emit('imagenes-actualizadas', imagenes.value)
   } catch (error) {
     errorMessage.value =

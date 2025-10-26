@@ -1,5 +1,10 @@
 import { request } from './apiClient'
-import type { PagedResponse, Producto } from '../types/api'
+import type {
+  ActualizarProductoPayload,
+  CrearProductoPayload,
+  PagedResponse,
+  Producto,
+} from '../types/api'
 
 export interface FetchProductsParams {
   q?: string
@@ -57,4 +62,27 @@ export async function fetchProductById(id: string): Promise<Producto> {
 
 export async function fetchProductBySlug(slug: string): Promise<Producto> {
   return request<Producto>(`/productos/slug/${encodeURIComponent(slug)}`)
+}
+
+export async function createProduct(payload: CrearProductoPayload): Promise<Producto> {
+  return request<Producto>('/productos', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function updateProduct(
+  id: string,
+  payload: ActualizarProductoPayload,
+): Promise<Producto> {
+  return request<Producto>(`/productos/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deactivateProduct(id: string): Promise<Producto> {
+  return request<Producto>(`/productos/${encodeURIComponent(id)}/desactivar`, {
+    method: 'PATCH',
+  })
 }
