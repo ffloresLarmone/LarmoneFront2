@@ -602,10 +602,7 @@ const onSubmitProducto = async () => {
     productFormError.value = 'El SKU del producto es obligatorio.'
     return
   }
-  if (productoForm.precio.trim().length > 0 && precio === undefined) {
-    productFormError.value = 'El precio ingresado no es válido.'
-    return
-  }
+ 
 
   const categorias = parseCategorias(productoForm.categoriasTexto)
   const atributos = parseAtributos(productoForm.atributosTexto)
