@@ -73,6 +73,8 @@ function mapToSummary(producto: Producto & { _thumb?: string }): ProductSummary 
 
   if (producto.marca) {
     tags.push(producto.marca)
+  } else if (typeof producto.marcaId === 'number') {
+    tags.push(`Marca #${producto.marcaId}`)
   }
 
   if (producto.categorias?.length) {
@@ -87,9 +89,10 @@ function mapToSummary(producto: Producto & { _thumb?: string }): ProductSummary 
     name: producto.nombre,
     description:
       producto.descripcionCorta ??
+      producto.descripcionLarga ??
       producto.descripcion ??
       'Muy pronto conocerás todos los detalles de este producto en nuestro catálogo.',
-    price: producto.precio,
+    price: producto.precio ?? 0,
     image: producto._thumb ?? FALLBACK_IMAGE,
     tags: tags.slice(0, 3),
   }

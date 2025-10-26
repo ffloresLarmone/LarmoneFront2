@@ -19,6 +19,8 @@ export interface ProductoAtributo {
   valor: string
 }
 
+export type ProductoAtributosJson = Record<string, unknown>
+
 export interface ProductoRatingResumen {
   total: number
   promedio: number
@@ -27,22 +29,32 @@ export interface ProductoRatingResumen {
 
 export interface Producto {
   id: string
+  sku: string
   nombre: string
   slug: string
   descripcion?: string | null
   descripcionCorta?: string | null
+  descripcionLarga?: string | null
   marca?: string | null
-  precio: number
+  marcaId?: number | null
+  tasaImpuestoId?: number | null
+  precio?: number | null
   activo: boolean
-  destacado: boolean
+  destacado?: boolean
   skuBase?: string | null
   pesoGramos?: number | null
   volumenMl?: number | null
-  createdAt: string
+  createdAt?: string
   updatedAt?: string
+  creadoEn?: string
+  actualizadoEn?: string | null
+  eliminado?: boolean
+  eliminadoEn?: string | null
+  rowver?: string
   imagenes?: ImagenProducto[]
   categorias?: ProductoCategoriaResumen[]
   atributos?: ProductoAtributo[]
+  atributosJson?: ProductoAtributosJson | null
   stockTotal?: number
   rating?: number
   ratingCount?: number
@@ -50,12 +62,16 @@ export interface Producto {
 }
 
 export interface CrearProductoPayload {
+  sku: string
   nombre: string
   slug: string
   descripcion?: string | null
+  descripcionCorta?: string | null
+  descripcionLarga?: string | null
   marca?: string | null
-  skuBase?: string | null
-  precio: number
+  marcaId?: number | null
+  tasaImpuestoId?: number | null
+  precio?: number | null
   activo?: boolean
   destacado?: boolean
   pesoGramos?: number | null
@@ -63,6 +79,7 @@ export interface CrearProductoPayload {
   categorias?: string[]
   imagenes?: ImagenProducto[]
   atributos?: ProductoAtributo[]
+  atributosJson?: ProductoAtributosJson | null
 }
 
 export type ActualizarProductoPayload = Partial<CrearProductoPayload>
@@ -77,6 +94,7 @@ export interface PagedResponse<T> {
 
 export interface CarritoProductoResumen {
   id: string
+  sku?: string
   nombre: string
   slug: string
   precio: number
@@ -121,6 +139,7 @@ export interface UpdateCartItemPayload {
 export interface VentaItemDetalle {
   id: string
   productoId: string
+  sku?: string
   nombre?: string
   slug?: string
   cantidad: number
