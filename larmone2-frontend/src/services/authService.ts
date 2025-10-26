@@ -6,6 +6,8 @@ export interface UserResponse {
   firstName?: string | null
   lastName?: string | null
   phone?: string | null
+  role?: string | null
+  roles?: string[]
 }
 
 export interface RegisterUserPayload {
@@ -63,6 +65,17 @@ const extractUser = (payload: unknown): UserResponse | null => {
     }
   }
 
+  const role =
+    typeof record.role === 'string'
+      ? record.role
+      : typeof record.rol === 'string'
+        ? record.rol
+        : undefined
+
+  const roles = Array.isArray(record.roles)
+    ? record.roles.filter((value): value is string => typeof value === 'string' && value.length > 0)
+    : undefined
+
   return {
     id: typeof record.id === 'string' ? record.id : undefined,
     email: maybeEmail,
@@ -74,6 +87,8 @@ const extractUser = (payload: unknown): UserResponse | null => {
         : typeof record.telefono === 'string'
           ? record.telefono
           : undefined,
+    role: role ?? undefined,
+    roles,
   }
 }
 

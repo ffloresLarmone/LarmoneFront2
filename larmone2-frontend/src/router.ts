@@ -10,6 +10,8 @@ import CheckoutPayment from './pages/CheckoutPayment.vue'
 import CheckoutResult from './pages/CheckoutResult.vue'
 import UserProfile from './pages/UserProfile.vue'
 import AdminDashboard from './pages/AdminDashboard.vue'
+import AdminLogin from './pages/AdminLogin.vue'
+import { useAuthStore } from './stores/auth'
 
 const routes = [
   { path: '/', name: 'home', component: Home },
@@ -32,6 +34,11 @@ const routes = [
     component: AdminDashboard,
     meta: { requiresAdmin: true },
   },
+  {
+    path: '/aurora/acceso',
+    name: 'admin-login',
+    component: AdminLogin,
+  },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
@@ -49,6 +56,37 @@ const router = createRouter({
 
     return { top: 0, behavior: 'smooth' }
   },
+})
+
+router.beforeEach((to) => {
+  const authStore = useAuthStore()
+
+  if (to.meta.requiresAdmin) {
+    if (!authStore.isAuthenticated) {
+      return {
+        name: 'admin-login',
+        query: { redirect: to.fullPath },
+      }
+    }
+
+    if (!authStore.isAdmin) {
+      return {
+        name: 'admin-login',
+        query: { redirect: to.fullPath, reason: 'forbidden' },
+      }
+    }
+  }
+
+  if (to.name === 'admin-login' && authStore.isAuthenticated && authStore.isAdmin) {
+    const redirectParam = to.query.redirect
+    if (typeof redirectParam === 'string' && redirectParam.length > 0) {
+      return { path: redirectParam }
+    }
+
+    return { name: 'admin-dashboard' }
+  }
+
+  return true
 })
 
 export default router
