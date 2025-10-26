@@ -282,9 +282,9 @@ async function cargarImagenes(idProducto: string) {
   try {
     let producto
     try {
-      producto = await fetchProductById(idProducto)
+      producto = await fetchProductById(idProducto, { admin: true })
     } catch (error) {
-      producto = await fetchProductBySlug(idProducto)
+      producto = await fetchProductBySlug(idProducto, { admin: true })
     }
     imagenes.value = normalizarImagenes(producto.imagenes)
     emit('imagenes-actualizadas', imagenes.value)

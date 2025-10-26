@@ -1,4 +1,4 @@
-import { request } from './apiClient'
+import { request, withAdminRole } from './apiClient'
 import type {
   ActualizarEnvioEstadoPayload,
   CancelarVentaPayload,
@@ -46,7 +46,7 @@ export async function fetchVentas(
   params: FetchVentasParams = {},
 ): Promise<PagedResponse<Venta>> {
   const queryString = buildQueryString(params)
-  return request<PagedResponse<Venta>>(`/ventas${queryString}`)
+  return request<PagedResponse<Venta>>(`/ventas${queryString}`, withAdminRole())
 }
 
 export async function cancelVenta(
@@ -55,18 +55,24 @@ export async function cancelVenta(
 ): Promise<Venta> {
   const body = Object.keys(payload).length > 0 ? JSON.stringify(payload) : undefined
 
-  return request<Venta>(`/ventas/${encodeURIComponent(ventaId)}/cancelar`, {
-    method: 'PATCH',
-    body,
-  })
+  return request<Venta>(
+    `/ventas/${encodeURIComponent(ventaId)}/cancelar`,
+    withAdminRole({
+      method: 'PATCH',
+      body,
+    }),
+  )
 }
 
 export async function updateEnvioEstado(
   envioId: string,
   payload: ActualizarEnvioEstadoPayload,
 ): Promise<VentaEnvio> {
-  return request<VentaEnvio>(`/envios/${encodeURIComponent(envioId)}/estado`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  })
+  return request<VentaEnvio>(
+    `/envios/${encodeURIComponent(envioId)}/estado`,
+    withAdminRole({
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  )
 }

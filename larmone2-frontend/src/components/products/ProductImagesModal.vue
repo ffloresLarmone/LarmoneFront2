@@ -11,10 +11,10 @@
             </div>
             <div class="modal-body">
               <p v-if="producto" class="text-muted mb-3">
-                Gestiona la galería de <strong>{{ producto.nombre }}</strong> (ID: {{ producto.id }}).
+                Gestiona la galería de <strong>{{ producto.nombre }}</strong> (ID: {{ productoId ?? 'Sin ID' }}).
               </p>
               <ProductImageManager
-                :id-producto="producto?.id ?? null"
+                :id-producto="productoId"
                 :nombre-producto="producto?.nombre"
                 @imagenes-actualizadas="reemitActualizacion"
               />
@@ -30,13 +30,30 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import ProductImageManager from './ProductImageManager.vue'
 import type { Producto } from '../../types/api'
 
-defineProps<{
+const props = defineProps<{
   show: boolean
   producto: Producto | null
 }>()
+
+const productoId = computed(() => {
+  if (!props.producto) {
+    return null
+  }
+
+  const id = typeof props.producto.id === 'string' ? props.producto.id.trim() : ''
+  if (id.length > 0) {
+    return id
+  }
+
+  const legacyId =
+    typeof props.producto.id_producto === 'string' ? props.producto.id_producto.trim() : ''
+
+  return legacyId.length > 0 ? legacyId : null
+})
 
 const emit = defineEmits<{
   (event: 'close'): void
