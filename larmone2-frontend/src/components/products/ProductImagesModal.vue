@@ -11,7 +11,7 @@
             </div>
             <div class="modal-body">
               <p v-if="producto" class="text-muted mb-3">
-                Gestiona la galería de <strong>{{ producto.nombre }}</strong> (ID: {{ productoId ?? 'Sin ID' }}).
+                Gestiona la galería de <strong>{{ producto.nombre }}</strong> ( {{ productoId ?? 'Sin ID' }}).
               </p>
               <ProductImageManager
                 :id-producto="productoId"

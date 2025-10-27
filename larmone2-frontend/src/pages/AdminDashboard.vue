@@ -61,7 +61,7 @@ const tabs: TabConfig[] = [
   {
     id: 'orders',
     label: 'Pedidos',
-    description: 'Supervisa y actualiza el estado de los pedidos confirmados por los clientes.',
+    description: 'Supervisa y actualiza el estado de los pedidos.',
     icon: 'bi-receipt-cutoff',
   },
   {
@@ -1244,7 +1244,7 @@ onMounted(async () => {
                             role="status"
                             aria-hidden="true"
                           ></span>
-                          Cargar producto
+                          Cargar
                         </button>
                         <button type="button" class="btn btn-outline-secondary" @click="limpiarBusquedaProducto">
                           Limpiar
@@ -1705,7 +1705,7 @@ onMounted(async () => {
                             <tr v-for="marca in marcas" :key="marca.id">
                               <td>
                                 <p class="fw-semibold mb-0">{{ marca.nombre }}</p>
-                                <small class="text-muted">ID: {{ marca.id }}</small>
+                                <small class="text-muted"> {{ marca.id }}</small>
                               </td>
                               <td><code>{{ marca.slug }}</code></td>
                               <td class="text-center">
