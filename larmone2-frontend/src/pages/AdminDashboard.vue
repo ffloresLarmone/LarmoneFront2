@@ -18,6 +18,7 @@ import {
   fetchProductBySlug,
   fetchProducts,
   updateProduct,
+  updateProductStock,
   type FetchProductsParams,
 } from '../services/productService'
 import {
@@ -771,22 +772,27 @@ const actualizarStockProducto = async (producto: Producto) => {
     return
   }
 
-  const payload = limpiarPayload({ stockTotal: nuevoStock })
-
   productoStockActualizando.value = productoId
   productFormError.value = ''
   productFormSuccess.value = ''
 
   try {
-    const respuesta = await updateProduct(productoId, payload, { admin: true })
-    productFormSuccess.value = `Stock de "${respuesta.nombre}" actualizado correctamente.`
+    const respuesta = await updateProductStock(productoId, nuevoStock, { admin: true })
+    const nombreProducto = respuesta.nombre ?? producto.nombre
+    productFormSuccess.value = `Stock de "${nombreProducto}" actualizado correctamente.`
+
+    const stockActualizado =
+      typeof respuesta.stockTotal === 'number' && Number.isFinite(respuesta.stockTotal)
+        ? respuesta.stockTotal
+        : nuevoStock
 
     if (obtenerIdProducto(productoEnEdicion.value) === productoId) {
-      productoEnEdicion.value = { ...productoEnEdicion.value, stockTotal: respuesta.stockTotal }
-      productoForm.stockTotal =
-        typeof respuesta.stockTotal === 'number' && Number.isFinite(respuesta.stockTotal)
-          ? respuesta.stockTotal.toString()
-          : ''
+      productoEnEdicion.value = {
+        ...productoEnEdicion.value,
+        stockTotal: stockActualizado,
+        nombre: nombreProducto,
+      }
+      productoForm.stockTotal = stockActualizado.toString()
     }
 
     await cargarProductos(productosPagination.page)
