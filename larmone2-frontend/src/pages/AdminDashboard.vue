@@ -218,6 +218,13 @@ const formatCurrency = (value: number | undefined | null) => {
   }).format(amount)
 }
 
+const formatStock = (value: number | undefined | null) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Intl.NumberFormat('es-CL').format(value)
+  }
+  return '—'
+}
+
 const formatDateTime = (iso: string | undefined | null) => {
   if (!iso) return 'Sin fecha'
   const date = new Date(iso)
@@ -1451,12 +1458,20 @@ onMounted(async () => {
                                   />
                                   <div>
                                     <p class="fw-semibold mb-0">{{ producto.nombre }}</p>
-                                    <small class="text-muted">SKU: {{ producto.sku || '—' }}</small>
+                                    <small class="text-muted d-block">
+                                      SKU: {{ producto.sku || '—' }}
+                                    </small>
+                                    <small class="text-muted d-block">
+                                      ID:
+                                      <span class="font-monospace">
+                                        {{ obtenerIdProducto(producto) ?? '—' }}
+                                      </span>
+                                    </small>
                                   </div>
                                 </div>
                               </td>
                               <td class="text-end">{{ formatCurrency(producto.precio) }}</td>
-                              <td class="text-end">{{ producto.stockTotal ?? '—' }}</td>
+                              <td class="text-end">{{ formatStock(producto.stockTotal) }}</td>
                               <td class="text-end">
                                 <span
                                   class="badge"
