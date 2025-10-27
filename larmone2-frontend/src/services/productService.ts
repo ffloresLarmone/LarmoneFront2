@@ -50,7 +50,42 @@ const buildQueryString = (params: FetchProductsParams): string => {
   return queryString ? `?${queryString}` : ''
 }
 
-type ProductoResponse = Producto & { id_producto?: string | null }
+type ProductoResponse = Producto & {
+  id_producto?: string | null
+  stock_total?: number | string | null
+  stock_disponible?: number | string | null
+  stockDisponible?: number | string | null
+  stock?: number | string | null
+}
+
+const parseNumeric = (value: unknown): number | undefined => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : undefined
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      return undefined
+    }
+    const parsed = Number(trimmed)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+
+  return undefined
+}
+
+const resolveStockTotal = (producto: ProductoResponse): number | undefined => {
+  const candidates: Array<number | undefined> = [
+    parseNumeric(producto.stockTotal),
+    parseNumeric(producto.stock_total),
+    parseNumeric(producto.stock_disponible),
+    parseNumeric(producto.stockDisponible),
+    parseNumeric(producto.stock),
+  ]
+
+  return candidates.find((value) => typeof value === 'number')
+}
 
 const normalizeProducto = (producto: ProductoResponse): Producto => {
   const rawId = typeof producto.id === 'string' ? producto.id.trim() : ''
@@ -58,11 +93,13 @@ const normalizeProducto = (producto: ProductoResponse): Producto => {
     typeof producto.id_producto === 'string' ? producto.id_producto.trim() : ''
 
   const finalId = rawId.length > 0 ? rawId : legacyId
+  const stockTotal = resolveStockTotal(producto)
 
   return {
     ...producto,
     id: finalId,
     id_producto: legacyId.length > 0 ? legacyId : finalId || undefined,
+    stockTotal: typeof stockTotal === 'number' ? stockTotal : undefined,
   }
 }
 
