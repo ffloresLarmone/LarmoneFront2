@@ -84,11 +84,11 @@ export interface CrearProductoPayload {
   nombre: string
   slug: string
   descripcion?: string | null
-  descripcionCorta?: string | null
-  descripcionLarga?: string | null
+  descripcion_corta?: string | null
+  descripcion_larga?: string | null
   marca?: string | null
-  marcaId?: number | null
-  tasaImpuestoId?: number | null
+  id_marca?: number | null
+  id_tasa_impuesto?: number | null
   precio?: number | null
   stockTotal?: number | null
   activo?: boolean

@@ -127,10 +127,10 @@ const mostrarModalImagenes = ref(false)
 const productoForm = reactive({
   nombre: '',
   slug: '',
-  descripcionCorta: '',
-  descripcionLarga: '',
-  marcaId: '',
-  tasaImpuestoId: '',
+  descripcion_corta: '',
+  descripcion_larga: '',
+  id_marca: '',
+  id_tasa_impuesto: '',
   sku: '',
   precio: '',
   stockTotal: '',
@@ -297,10 +297,10 @@ const obtenerIdProducto = (producto?: Producto | null): string | null => {
 const resetProductoForm = () => {
   productoForm.nombre = ''
   productoForm.slug = ''
-  productoForm.descripcionCorta = ''
-  productoForm.descripcionLarga = ''
-  productoForm.marcaId = ''
-  productoForm.tasaImpuestoId = ''
+  productoForm.descripcion_corta = ''
+  productoForm.descripcion_larga = ''
+  productoForm.id_marca = ''
+  productoForm.id_tasa_impuesto = ''
   productoForm.sku = ''
   productoForm.precio = ''
   productoForm.stockTotal = ''
@@ -487,14 +487,14 @@ const rellenarFormularioProducto = (producto: Producto) => {
   mostrarFormularioProducto.value = true
   productoForm.nombre = producto.nombre ?? ''
   productoForm.slug = producto.slug ?? ''
-  productoForm.descripcionCorta = producto.descripcionCorta ?? ''
-  productoForm.descripcionLarga =
+  productoForm.descripcion_corta = producto.descripcionCorta ?? ''
+  productoForm.descripcion_larga =
     producto.descripcionLarga ?? producto.descripcion ?? ''
-  productoForm.marcaId =
+  productoForm.id_marca =
     typeof producto.marcaId === 'number' && Number.isFinite(producto.marcaId)
       ? producto.marcaId.toString()
       : ''
-  productoForm.tasaImpuestoId =
+  productoForm.id_tasa_impuesto =
     typeof producto.tasaImpuestoId === 'number' && Number.isFinite(producto.tasaImpuestoId)
       ? producto.tasaImpuestoId.toString()
       : ''
@@ -665,11 +665,11 @@ const onSubmitProducto = async () => {
 
   const nombre = normalizarTexto(productoForm.nombre)
   const slug = normalizarTexto(productoForm.slug)
-  const descripcionCorta = normalizarTexto(productoForm.descripcionCorta)
-  const descripcionLarga = normalizarTexto(productoForm.descripcionLarga)
+  const descripcionCorta = normalizarTexto(productoForm.descripcion_corta)
+  const descripcionLarga = normalizarTexto(productoForm.descripcion_larga)
   const sku = normalizarTexto(productoForm.sku)
-  const marcaId = parsearEnteroOpcional(productoForm.marcaId)
-  const tasaImpuestoId = parsearEnteroOpcional(productoForm.tasaImpuestoId)
+  const id_marca = parsearEnteroOpcional(productoForm.id_marca)
+  const id_tasa_impuesto = parsearEnteroOpcional(productoForm.id_tasa_impuesto)
   const precio = parsearNumeroOpcional(productoForm.precio)
   const stockTotal = parsearNumeroOpcional(productoForm.stockTotal)
   const pesoGramos = parsearNumeroOpcional(productoForm.pesoGramos)
@@ -699,10 +699,10 @@ const onSubmitProducto = async () => {
     nombre,
     slug,
     descripcion: descripcionLarga || undefined,
-    descripcionCorta: descripcionCorta || undefined,
-    descripcionLarga: descripcionLarga || undefined,
-    marcaId,
-    tasaImpuestoId,
+    descripcion_corta: descripcionCorta || undefined,
+    descripcion_larga: descripcionLarga || undefined,
+    id_marca,
+    id_tasa_impuesto,
     precio,
     stockTotal,
     activo: productoForm.activo,
@@ -1357,7 +1357,7 @@ onMounted(async () => {
                           class="form-control"
                           rows="2"
                           placeholder="Resumen para listar el producto"
-                          v-model="productoForm.descripcionCorta"
+                          v-model="productoForm.descripcion_corta"
                         ></textarea>
                       </div>
                       <div class="col-12">
@@ -1366,7 +1366,7 @@ onMounted(async () => {
                           class="form-control"
                           rows="4"
                           placeholder="Detalle completo del producto"
-                          v-model="productoForm.descripcionLarga"
+                          v-model="productoForm.descripcion_larga"
                         ></textarea>
                       </div>
                       <div class="col-12 col-md-6">
@@ -1379,7 +1379,7 @@ onMounted(async () => {
                           type="number"
                           min="0"
                           class="form-control"
-                          v-model="productoForm.marcaId"
+                          v-model="productoForm.id_marca"
                         />
                       </div>
                       <div class="col-12 col-md-6">
@@ -1388,7 +1388,7 @@ onMounted(async () => {
                           type="number"
                           min="0"
                           class="form-control"
-                          v-model="productoForm.tasaImpuestoId"
+                          v-model="productoForm.id_tasa_impuesto"
                         />
                       </div>
                       <div class="col-12 col-md-6">

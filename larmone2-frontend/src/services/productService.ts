@@ -175,7 +175,9 @@ export async function updateProduct(
   id: string,
   payload: ActualizarProductoPayload,
   options?: { admin?: boolean },
-): Promise<Producto> {
+)
+: Promise<Producto> {
+  console.log(JSON.stringify(payload))
   const respuesta = await request<ProductoResponse>(
     `/productos/${encodeURIComponent(id)}`,
     applyAdminRole(
