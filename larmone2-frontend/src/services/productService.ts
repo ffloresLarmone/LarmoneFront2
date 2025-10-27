@@ -175,9 +175,7 @@ export async function updateProduct(
   id: string,
   payload: ActualizarProductoPayload,
   options?: { admin?: boolean },
-)
-: Promise<Producto> {
-  console.log(JSON.stringify(payload))
+): Promise<Producto> {
   const respuesta = await request<ProductoResponse>(
     `/productos/${encodeURIComponent(id)}`,
     applyAdminRole(
@@ -189,6 +187,63 @@ export async function updateProduct(
     ),
   )
   return normalizeProducto(respuesta)
+}
+
+type UpdateProductStockResponse =
+  | ProductoResponse
+  | { producto: ProductoResponse }
+  | { stock: number; stockTotal?: number }
+  | undefined
+
+const resolveProductoFromStockResponse = (
+  productoId: string,
+  stockSolicitado: number,
+  respuesta: UpdateProductStockResponse,
+): Producto => {
+  if (respuesta && typeof respuesta === 'object' && 'producto' in respuesta) {
+    const producto = (respuesta as { producto: ProductoResponse }).producto
+    if (producto) {
+      return normalizeProducto(producto)
+    }
+  }
+
+  if (respuesta && typeof respuesta === 'object') {
+    const producto = respuesta as ProductoResponse
+    const normalizado = normalizeProducto(producto)
+    if (normalizado.id) {
+      return normalizado
+    }
+  }
+
+  const stockTotal =
+    respuesta && typeof respuesta === 'object'
+      ? (respuesta as { stockTotal?: number }).stockTotal ??
+        (respuesta as { stock?: number }).stock
+      : undefined
+
+  return normalizeProducto({
+    id: productoId,
+    stockTotal: typeof stockTotal === 'number' ? stockTotal : stockSolicitado,
+  } as ProductoResponse)
+}
+
+export async function updateProductStock(
+  id: string,
+  stock: number,
+  options?: { admin?: boolean },
+): Promise<Producto> {
+  const respuesta = await request<UpdateProductStockResponse>(
+    `/inventario/stock/${encodeURIComponent(id)}`,
+    applyAdminRole(
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ stock }),
+      },
+      options?.admin ?? true,
+    ),
+  )
+
+  return resolveProductoFromStockResponse(id, stock, respuesta)
 }
 
 export async function deactivateProduct(
