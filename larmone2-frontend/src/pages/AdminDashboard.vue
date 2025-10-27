@@ -99,6 +99,7 @@ const productoFilters = reactive({
 })
 const totalProductosActivos = ref(0)
 const productoOperacionEnCurso = ref<string | null>(null)
+const productoStockActualizando = ref<string | null>(null)
 const productoBuscando = ref(false)
 
 const productoEnEdicion = ref<Producto | null>(null)
@@ -132,6 +133,7 @@ const productoForm = reactive({
   tasaImpuestoId: '',
   sku: '',
   precio: '',
+  stockTotal: '',
   activo: true,
   destacado: false,
   pesoGramos: '',
@@ -301,6 +303,7 @@ const resetProductoForm = () => {
   productoForm.tasaImpuestoId = ''
   productoForm.sku = ''
   productoForm.precio = ''
+  productoForm.stockTotal = ''
   productoForm.activo = true
   productoForm.destacado = false
   productoForm.pesoGramos = ''
@@ -497,6 +500,10 @@ const rellenarFormularioProducto = (producto: Producto) => {
       : ''
   productoForm.sku = producto.sku ?? producto.skuBase ?? ''
   productoForm.precio = typeof producto.precio === 'number' ? producto.precio.toString() : ''
+  productoForm.stockTotal =
+    typeof producto.stockTotal === 'number' && Number.isFinite(producto.stockTotal)
+      ? producto.stockTotal.toString()
+      : ''
   productoForm.activo = producto.activo ?? true
   productoForm.destacado = producto.destacado ?? false
   productoForm.pesoGramos =
@@ -664,6 +671,7 @@ const onSubmitProducto = async () => {
   const marcaId = parsearEnteroOpcional(productoForm.marcaId)
   const tasaImpuestoId = parsearEnteroOpcional(productoForm.tasaImpuestoId)
   const precio = parsearNumeroOpcional(productoForm.precio)
+  const stockTotal = parsearNumeroOpcional(productoForm.stockTotal)
   const pesoGramos = parsearNumeroOpcional(productoForm.pesoGramos)
   const volumenMl = parsearNumeroOpcional(productoForm.volumenMl)
 
@@ -696,6 +704,7 @@ const onSubmitProducto = async () => {
     marcaId,
     tasaImpuestoId,
     precio,
+    stockTotal,
     activo: productoForm.activo,
     destacado: productoForm.destacado,
     pesoGramos,
@@ -732,6 +741,63 @@ const onSubmitProducto = async () => {
         : 'No fue posible guardar el producto. Intenta nuevamente.'
   } finally {
     productFormSubmitting.value = false
+  }
+}
+
+const actualizarStockProducto = async (producto: Producto) => {
+  const productoId = obtenerIdProducto(producto)
+  if (!productoId) {
+    productFormError.value = 'No fue posible determinar el identificador del producto seleccionado.'
+    return
+  }
+
+  const valorActual =
+    typeof producto.stockTotal === 'number' && Number.isFinite(producto.stockTotal)
+      ? producto.stockTotal.toString()
+      : ''
+
+  const input = window.prompt(
+    `Ingresa el stock disponible para "${producto.nombre}"`,
+    valorActual,
+  )
+
+  if (input === null) {
+    return
+  }
+
+  const nuevoStock = parsearNumeroOpcional(input)
+  if (nuevoStock === undefined || nuevoStock < 0) {
+    productFormError.value = 'Ingresa un valor válido para el stock del producto.'
+    return
+  }
+
+  const payload = limpiarPayload({ stockTotal: nuevoStock })
+
+  productoStockActualizando.value = productoId
+  productFormError.value = ''
+  productFormSuccess.value = ''
+
+  try {
+    const respuesta = await updateProduct(productoId, payload, { admin: true })
+    productFormSuccess.value = `Stock de "${respuesta.nombre}" actualizado correctamente.`
+
+    if (obtenerIdProducto(productoEnEdicion.value) === productoId) {
+      productoEnEdicion.value = { ...productoEnEdicion.value, stockTotal: respuesta.stockTotal }
+      productoForm.stockTotal =
+        typeof respuesta.stockTotal === 'number' && Number.isFinite(respuesta.stockTotal)
+          ? respuesta.stockTotal.toString()
+          : ''
+    }
+
+    await cargarProductos(productosPagination.page)
+    await refrescarMetricasProductosActivos()
+  } catch (error) {
+    productFormError.value =
+      error instanceof Error
+        ? error.message
+        : 'No fue posible actualizar el stock del producto. Intenta nuevamente.'
+  } finally {
+    productoStockActualizando.value = null
   }
 }
 
@@ -1333,6 +1399,16 @@ onMounted(async () => {
                         </div>
                       </div>
                       <div class="col-12 col-md-6">
+                        <label class="form-label">Stock disponible</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          class="form-control"
+                          v-model="productoForm.stockTotal"
+                        />
+                      </div>
+                      <div class="col-12 col-md-6">
                         <label class="form-label">Peso (gramos)</label>
                         <input type="number" min="0" class="form-control" v-model="productoForm.pesoGramos" />
                       </div>
@@ -1486,6 +1562,24 @@ onMounted(async () => {
                                     Editar
                                   </button>
                                   <button
+                                    class="btn btn-sm btn-outline-success"
+                                    type="button"
+                                    :disabled="
+                                      productoStockActualizando === producto.id ||
+                                      productoOperacionEnCurso === producto.id ||
+                                      productosLoading
+                                    "
+                                    @click="actualizarStockProducto(producto)"
+                                  >
+                                    <span
+                                      v-if="productoStockActualizando === producto.id"
+                                      class="spinner-border spinner-border-sm me-1"
+                                      role="status"
+                                      aria-hidden="true"
+                                    ></span>
+                                    Stock
+                                  </button>
+                                  <button
                                     class="btn btn-sm btn-outline-secondary"
                                     type="button"
                                     @click="abrirModalImagenes(producto)"
@@ -1495,7 +1589,11 @@ onMounted(async () => {
                                   <button
                                     class="btn btn-sm btn-outline-danger"
                                     type="button"
-                                    :disabled="productoOperacionEnCurso === producto.id || !producto.activo"
+                                    :disabled="
+                                      productoOperacionEnCurso === producto.id ||
+                                      productoStockActualizando === producto.id ||
+                                      !producto.activo
+                                    "
                                     @click="desactivarProducto(producto)"
                                   >
                                     <span

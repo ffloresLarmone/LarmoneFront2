@@ -90,6 +90,7 @@ export interface CrearProductoPayload {
   marcaId?: number | null
   tasaImpuestoId?: number | null
   precio?: number | null
+  stockTotal?: number | null
   activo?: boolean
   destacado?: boolean
   pesoGramos?: number | null
