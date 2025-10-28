@@ -39,19 +39,24 @@ const handleSubmit = async () => {
   isSubmitting.value = true
 
   try {
-    const user = await authenticateUser({ email: form.email, password: form.password })
+    const authResult = await authenticateUser({ email: form.email, password: form.password })
 
-    if (!user) {
+    if (!authResult.user) {
       errorMessage.value = 'Credenciales inválidas. Revisa tus datos e intenta nuevamente.'
       return
     }
 
-    if (!authStore.hasAdminAccess(user)) {
+    if (!authResult.token) {
+      errorMessage.value = 'No recibimos credenciales válidas del servidor.'
+      return
+    }
+
+    if (!authStore.hasAdminAccess(authResult.user)) {
       errorMessage.value = 'Tu cuenta no tiene permisos de administrador.'
       return
     }
 
-    authStore.login(user)
+    authStore.login(authResult.user, authResult.token)
     successMessage.value = 'Acceso concedido. Redirigiendo al panel de administración…'
     await router.push(redirectTarget.value)
   } catch (error) {

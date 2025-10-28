@@ -100,14 +100,22 @@ const handleSubmit = async () => {
 
     isSubmitting.value = true
     try {
-      const user = await authenticateUser({ email: loginForm.email, password: loginForm.password })
+      const authResult = await authenticateUser({
+        email: loginForm.email,
+        password: loginForm.password,
+      })
 
-      if (!user) {
+      if (!authResult.user) {
         showFeedbackToast('Verifica tus datos e intenta nuevamente.', 1)
         return
       }
 
-      authStore.login(user)
+      if (!authResult.token) {
+        showFeedbackToast('No pudimos validar tus credenciales. Inténtalo nuevamente.', 1)
+        return
+      }
+
+      authStore.login(authResult.user, authResult.token)
       router.push('/productos')
       showFeedbackToast('Tu sesión se inició correctamente.', 2)
     } catch (error) {
@@ -137,7 +145,7 @@ const handleSubmit = async () => {
   isSubmitting.value = true
 
   try {
-    const user = await registerUser({
+    const authResult = await registerUser({
       firstName: registerForm.firstName,
       lastName: registerForm.lastName,
       email: registerForm.email,
@@ -145,12 +153,17 @@ const handleSubmit = async () => {
       phone: registerForm.phone || undefined,
     })
 
-    if (!user) {
+    if (!authResult.user) {
       showFeedbackToast('Inténtalo nuevamente en unos minutos.', 1)
       return
     }
 
-    authStore.login(user)
+    if (!authResult.token) {
+      showFeedbackToast('No pudimos validar tu acceso. Inténtalo nuevamente.', 1)
+      return
+    }
+
+    authStore.login(authResult.user, authResult.token)
     showFeedbackToast('Creamos tu cuenta y abrimos tu sesión.', 2)
     router.push('/productos')
   } catch (error) {
