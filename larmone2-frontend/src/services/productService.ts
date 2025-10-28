@@ -139,6 +139,46 @@ export async function fetchProducts(
   return mapearProductos(respuesta)
 }
 
+export interface FetchAllProductsOptions {
+  admin?: boolean
+  includeInactive?: boolean
+  pageSize?: number
+}
+
+export async function fetchAllProducts(options?: FetchAllProductsOptions): Promise<Producto[]> {
+  const pageSize = options?.pageSize && options.pageSize > 0 ? options.pageSize : 100
+  let page = 1
+  let totalPages = 1
+  const items: Producto[] = []
+
+  do {
+    const respuesta = await fetchProducts(
+      {
+        page,
+        pageSize,
+        soloActivos: options?.includeInactive ? false : undefined,
+      },
+      { admin: options?.admin },
+    )
+
+    items.push(...respuesta.items)
+
+    const resolvedTotalPages =
+      typeof respuesta.totalPages === 'number' && respuesta.totalPages > 0
+        ? respuesta.totalPages
+        : Math.max(1, Math.ceil(respuesta.total / respuesta.pageSize))
+
+    totalPages = resolvedTotalPages
+    page += 1
+
+    if (respuesta.items.length === 0) {
+      break
+    }
+  } while (page <= totalPages)
+
+  return items
+}
+
 export async function fetchProductById(
   id: string,
   options?: { admin?: boolean },
