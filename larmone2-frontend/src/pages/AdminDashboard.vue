@@ -3,12 +3,19 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import ProductImagesModal from '../components/products/ProductImagesModal.vue'
 import type {
   ActualizarEnvioEstadoPayload,
+  ActualizarStockMinPayload,
+  ActualizarStockPayload,
   CrearProductoPayload,
   Marca,
   Producto,
   ProductoAtributo,
   ProductoAtributosJson,
   ProductoCategoriaResumen,
+  ProductoStockDetalle,
+  ProductoStockGlobal,
+  RegistrarAjusteInventarioPayload,
+  RegistrarEntradaInventarioPayload,
+  RegistrarSalidaInventarioPayload,
   Venta,
 } from '../types/api'
 import {
@@ -17,8 +24,13 @@ import {
   fetchProductById,
   fetchProductBySlug,
   fetchProducts,
+  fetchProductStockGlobal,
+  registrarAjusteInventario,
+  registrarEntradaInventario,
+  registrarSalidaInventario,
   updateProduct,
   updateProductStock,
+  updateProductStockMin,
   type FetchProductsParams,
 } from '../services/productService'
 import {
@@ -124,6 +136,46 @@ const productoFormSubmitLabel = computed(() => (esModoEdicionProducto.value ? 'G
 
 const productoParaImagenes = ref<Producto | null>(null)
 const mostrarModalImagenes = ref(false)
+
+type MovimientoInventarioTipo = 'entrada' | 'salida' | 'ajuste'
+
+const stockControl = reactive({
+  visible: false,
+  loading: false,
+  producto: null as Producto | null,
+  detalle: null as ProductoStockGlobal | null,
+  error: '',
+  success: '',
+  globalForm: {
+    stock: '',
+    bodega: '',
+    motivo: '',
+    submitting: false,
+  },
+  minForm: {
+    stockMin: '',
+    bodega: '',
+    submitting: false,
+  },
+  movimientoForm: {
+    tipo: 'entrada' as MovimientoInventarioTipo,
+    cantidad: '',
+    delta: '',
+    bodegaNombre: '',
+    motivo: '',
+    refTipo: '',
+    refId: '',
+    permitirNegativo: false,
+    submitting: false,
+  },
+})
+
+const stockControlProductoId = computed(() => obtenerIdProducto(stockControl.producto))
+const stockControlProductoNombre = computed(() => stockControl.producto?.nombre ?? '')
+const stockControlStockTotal = computed(() => stockControl.detalle?.stockTotal ?? 0)
+const stockControlBodegas = computed<ProductoStockDetalle[]>(
+  () => stockControl.detalle?.porBodega ?? [],
+)
 
 const productoForm = reactive({
   nombre: '',
@@ -293,6 +345,324 @@ const obtenerIdProducto = (producto?: Producto | null): string | null => {
     typeof producto.id_producto === 'string' ? producto.id_producto.trim() : ''
 
   return legacyId.length > 0 ? legacyId : null
+}
+
+const normalizarStockDetalle = (
+  detalle?: ProductoStockDetalle | null,
+): ProductoStockDetalle | null => {
+  if (!detalle) {
+    return null
+  }
+
+  const cantidad = parsearNumeroOpcional(detalle.cantidad)
+  const stockMin = parsearNumeroOpcional(detalle.stockMin)
+  const bodega =
+    typeof detalle.bodega === 'string' && detalle.bodega.trim().length > 0
+      ? detalle.bodega.trim()
+      : null
+
+  return {
+    productoId: detalle.productoId,
+    bodega,
+    cantidad: cantidad ?? 0,
+    stockMin: stockMin ?? null,
+    alertaBajoStock: detalle.alertaBajoStock ?? false,
+  }
+}
+
+const normalizarStockGlobal = (
+  detalle?: ProductoStockGlobal | null,
+): ProductoStockGlobal | null => {
+  if (!detalle) {
+    return null
+  }
+
+  const stockTotal = parsearNumeroOpcional(detalle.stockTotal) ?? 0
+  const porBodega = Array.isArray(detalle.porBodega)
+    ? detalle.porBodega
+        .map((item) => normalizarStockDetalle(item))
+        .filter((item): item is ProductoStockDetalle => item !== null)
+    : []
+
+  return {
+    productoId: detalle.productoId,
+    stockTotal,
+    porBodega,
+  }
+}
+
+const resetStockControlForms = () => {
+  stockControl.globalForm.stock = ''
+  stockControl.globalForm.bodega = ''
+  stockControl.globalForm.motivo = ''
+  stockControl.globalForm.submitting = false
+
+  stockControl.minForm.stockMin = ''
+  stockControl.minForm.bodega = ''
+  stockControl.minForm.submitting = false
+
+  stockControl.movimientoForm.tipo = 'entrada'
+  stockControl.movimientoForm.cantidad = ''
+  stockControl.movimientoForm.delta = ''
+  stockControl.movimientoForm.bodegaNombre = ''
+  stockControl.movimientoForm.motivo = ''
+  stockControl.movimientoForm.refTipo = ''
+  stockControl.movimientoForm.refId = ''
+  stockControl.movimientoForm.permitirNegativo = false
+  stockControl.movimientoForm.submitting = false
+}
+
+const cerrarControlStock = () => {
+  stockControl.visible = false
+  stockControl.producto = null
+  stockControl.detalle = null
+  stockControl.error = ''
+  stockControl.success = ''
+  resetStockControlForms()
+}
+
+const sincronizarStockLocal = (productoId: string, stockTotal: number) => {
+  if (stockControl.producto && obtenerIdProducto(stockControl.producto) === productoId) {
+    stockControl.producto = {
+      ...stockControl.producto,
+      stockTotal,
+    }
+  }
+
+  if (productoEnEdicion.value && obtenerIdProducto(productoEnEdicion.value) === productoId) {
+    productoEnEdicion.value = {
+      ...productoEnEdicion.value,
+      stockTotal,
+    }
+    productoForm.stockTotal = stockTotal.toString()
+  }
+}
+
+const cargarDetalleStockProducto = async (productoId: string) => {
+  stockControl.loading = true
+  stockControl.error = ''
+
+  try {
+    const detalle = await fetchProductStockGlobal(productoId, { admin: true })
+    const normalizado = normalizarStockGlobal(detalle)
+    stockControl.detalle = normalizado
+    if (normalizado) {
+      sincronizarStockLocal(productoId, normalizado.stockTotal)
+      stockControl.globalForm.stock = normalizado.stockTotal.toString()
+    }
+  } catch (error) {
+    stockControl.detalle = null
+    stockControl.error =
+      error instanceof Error
+        ? error.message
+        : 'No fue posible obtener el stock del producto seleccionado.'
+  } finally {
+    stockControl.loading = false
+  }
+}
+
+const enviarActualizacionStockGlobal = async () => {
+  const productoId = obtenerIdProducto(stockControl.producto)
+  if (!productoId) {
+    stockControl.error = 'No fue posible identificar el producto seleccionado.'
+    return
+  }
+
+  const stockValor = parsearNumeroOpcional(stockControl.globalForm.stock)
+  if (stockValor === undefined) {
+    stockControl.error = 'Ingresa un valor entero mayor o igual a cero para el stock disponible.'
+    return
+  }
+  if (!Number.isInteger(stockValor) || stockValor < 0) {
+    stockControl.error = 'Ingresa un valor entero mayor o igual a cero para el stock disponible.'
+    return
+  }
+
+  const bodega = normalizarTexto(stockControl.globalForm.bodega)
+  const motivo = normalizarTexto(stockControl.globalForm.motivo)
+
+  stockControl.globalForm.submitting = true
+  stockControl.error = ''
+  stockControl.success = ''
+
+  try {
+    await updateProductStock(
+      productoId,
+      limpiarPayload<ActualizarStockPayload>({
+        stock: stockValor,
+        bodega: bodega || undefined,
+        motivo: motivo || undefined,
+      }),
+      { admin: true },
+    )
+
+    await cargarDetalleStockProducto(productoId)
+    const stockActual = stockControl.detalle?.stockTotal ?? stockValor
+    sincronizarStockLocal(productoId, stockActual)
+    stockControl.success = 'Stock actualizado correctamente.'
+    await cargarProductos(productosPagination.page)
+    await refrescarMetricasProductosActivos()
+  } catch (error) {
+    stockControl.error =
+      error instanceof Error
+        ? error.message
+        : 'No fue posible actualizar el stock del producto.'
+  } finally {
+    stockControl.globalForm.submitting = false
+  }
+}
+
+const enviarActualizacionStockMin = async () => {
+  const productoId = obtenerIdProducto(stockControl.producto)
+  if (!productoId) {
+    stockControl.error = 'No fue posible identificar el producto seleccionado.'
+    return
+  }
+
+  const stockMinValor = parsearNumeroOpcional(stockControl.minForm.stockMin)
+  if (stockMinValor === undefined) {
+    stockControl.error = 'Ingresa un valor entero mayor o igual a cero para el stock de seguridad.'
+    return
+  }
+  if (!Number.isInteger(stockMinValor) || stockMinValor < 0) {
+    stockControl.error = 'Ingresa un valor entero mayor o igual a cero para el stock de seguridad.'
+    return
+  }
+
+  const bodega = normalizarTexto(stockControl.minForm.bodega)
+
+  stockControl.minForm.submitting = true
+  stockControl.error = ''
+  stockControl.success = ''
+
+  try {
+    await updateProductStockMin(
+      productoId,
+      limpiarPayload<ActualizarStockMinPayload>({
+        stockMin: stockMinValor,
+        bodega: bodega || undefined,
+      }),
+      { admin: true },
+    )
+
+    await cargarDetalleStockProducto(productoId)
+    stockControl.success = 'Stock de seguridad actualizado correctamente.'
+  } catch (error) {
+    stockControl.error =
+      error instanceof Error
+        ? error.message
+        : 'No fue posible actualizar el stock de seguridad.'
+  } finally {
+    stockControl.minForm.submitting = false
+  }
+}
+
+const registrarMovimientoInventario = async () => {
+  const productoId = obtenerIdProducto(stockControl.producto)
+  if (!productoId) {
+    stockControl.error = 'No fue posible identificar el producto seleccionado.'
+    return
+  }
+
+  const tipo = stockControl.movimientoForm.tipo
+  const bodega = normalizarTexto(stockControl.movimientoForm.bodegaNombre)
+  const motivo = normalizarTexto(stockControl.movimientoForm.motivo)
+  const refTipo = normalizarTexto(stockControl.movimientoForm.refTipo)
+  const refId = normalizarTexto(stockControl.movimientoForm.refId)
+
+  stockControl.movimientoForm.submitting = true
+  stockControl.error = ''
+  stockControl.success = ''
+
+  try {
+    let mensaje = ''
+
+    if (tipo === 'entrada') {
+      const cantidadValor = parsearNumeroOpcional(stockControl.movimientoForm.cantidad)
+      if (cantidadValor === undefined) {
+        throw new Error('Ingresa un entero positivo para la cantidad de entrada.')
+      }
+      if (!Number.isInteger(cantidadValor) || cantidadValor <= 0) {
+        throw new Error('Ingresa un entero positivo para la cantidad de entrada.')
+      }
+
+      await registrarEntradaInventario(
+        limpiarPayload<RegistrarEntradaInventarioPayload>({
+          productoId,
+          cantidad: cantidadValor,
+          bodegaNombre: bodega || undefined,
+          motivo: motivo || undefined,
+          refTipo: refTipo || undefined,
+          refId: refId || undefined,
+        }),
+        { admin: true },
+      )
+
+      stockControl.movimientoForm.cantidad = ''
+      mensaje = 'Entrada registrada correctamente.'
+    } else if (tipo === 'salida') {
+      const cantidadValor = parsearNumeroOpcional(stockControl.movimientoForm.cantidad)
+      if (cantidadValor === undefined) {
+        throw new Error('Ingresa un entero positivo para la cantidad de salida.')
+      }
+      if (!Number.isInteger(cantidadValor) || cantidadValor <= 0) {
+        throw new Error('Ingresa un entero positivo para la cantidad de salida.')
+      }
+
+      await registrarSalidaInventario(
+        limpiarPayload<RegistrarSalidaInventarioPayload>({
+          productoId,
+          cantidad: cantidadValor,
+          bodegaNombre: bodega || undefined,
+          motivo: motivo || undefined,
+          refTipo: refTipo || undefined,
+          refId: refId || undefined,
+          permitirNegativo: stockControl.movimientoForm.permitirNegativo || undefined,
+        }),
+        { admin: true },
+      )
+
+      stockControl.movimientoForm.cantidad = ''
+      mensaje = 'Salida registrada correctamente.'
+    } else {
+      const deltaValor = parsearNumeroOpcional(stockControl.movimientoForm.delta)
+      if (deltaValor === undefined) {
+        throw new Error('Ingresa un valor entero distinto de cero para el ajuste.')
+      }
+      if (!Number.isInteger(deltaValor) || deltaValor === 0) {
+        throw new Error('Ingresa un valor entero distinto de cero para el ajuste.')
+      }
+
+      await registrarAjusteInventario(
+        limpiarPayload<RegistrarAjusteInventarioPayload>({
+          productoId,
+          delta: deltaValor,
+          bodegaNombre: bodega || undefined,
+          motivo: motivo || undefined,
+        }),
+        { admin: true },
+      )
+
+      stockControl.movimientoForm.delta = ''
+      mensaje = 'Ajuste registrado correctamente.'
+    }
+
+    await cargarDetalleStockProducto(productoId)
+    const stockActual = stockControl.detalle?.stockTotal
+    if (typeof stockActual === 'number') {
+      sincronizarStockLocal(productoId, stockActual)
+    }
+    stockControl.success = mensaje
+    await cargarProductos(productosPagination.page)
+    await refrescarMetricasProductosActivos()
+  } catch (error) {
+    stockControl.error =
+      error instanceof Error
+        ? error.message
+        : 'No fue posible registrar el movimiento de inventario.'
+  } finally {
+    stockControl.movimientoForm.submitting = false
+  }
 }
 
 const resetProductoForm = () => {
@@ -752,56 +1122,19 @@ const actualizarStockProducto = async (producto: Producto) => {
     return
   }
 
-  const valorActual =
-    typeof producto.stockTotal === 'number' && Number.isFinite(producto.stockTotal)
-      ? producto.stockTotal.toString()
-      : ''
-
-  const input = window.prompt(
-    `Ingresa el stock disponible para "${producto.nombre}"`,
-    valorActual,
-  )
-
-  if (input === null) {
-    return
-  }
-
-  const nuevoStock = parsearNumeroOpcional(input)
-  if (nuevoStock === undefined || nuevoStock < 0) {
-    productFormError.value = 'Ingresa un valor válido para el stock del producto.'
-    return
-  }
-
   productoStockActualizando.value = productoId
   productFormError.value = ''
   productFormSuccess.value = ''
 
+  stockControl.producto = producto
+  stockControl.visible = true
+  stockControl.detalle = null
+  stockControl.error = ''
+  stockControl.success = ''
+  resetStockControlForms()
+
   try {
-    const respuesta = await updateProductStock(productoId, nuevoStock, { admin: true })
-    const nombreProducto = respuesta.nombre ?? producto.nombre
-    productFormSuccess.value = `Stock de "${nombreProducto}" actualizado correctamente.`
-
-    const stockActualizado =
-      typeof respuesta.stockTotal === 'number' && Number.isFinite(respuesta.stockTotal)
-        ? respuesta.stockTotal
-        : nuevoStock
-
-    if (obtenerIdProducto(productoEnEdicion.value) === productoId) {
-      productoEnEdicion.value = {
-        ...productoEnEdicion.value,
-        stockTotal: stockActualizado,
-        nombre: nombreProducto,
-      }
-      productoForm.stockTotal = stockActualizado.toString()
-    }
-
-    await cargarProductos(productosPagination.page)
-    await refrescarMetricasProductosActivos()
-  } catch (error) {
-    productFormError.value =
-      error instanceof Error
-        ? error.message
-        : 'No fue posible actualizar el stock del producto. Intenta nuevamente.'
+    await cargarDetalleStockProducto(productoId)
   } finally {
     productoStockActualizando.value = null
   }
@@ -2262,6 +2595,303 @@ onMounted(async () => {
       @close="cerrarModalImagenes"
       @imagenes-actualizadas="cargarProductos(productosPagination.page)"
     />
+    <div
+      v-if="stockControl.visible"
+      class="modal fade show d-block"
+      tabindex="-1"
+      role="dialog"
+      aria-modal="true"
+      @click.self="cerrarControlStock"
+    >
+      <div class="modal-dialog modal-xl modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <div>
+              <h5 class="modal-title">Control de stock</h5>
+              <p v-if="stockControlProductoNombre" class="mb-0">{{ stockControlProductoNombre }}</p>
+              <p v-if="stockControlProductoId" class="mb-0 text-muted small">
+                ID: <span class="font-monospace">{{ stockControlProductoId }}</span>
+              </p>
+            </div>
+            <button type="button" class="btn-close" aria-label="Cerrar" @click="cerrarControlStock"></button>
+          </div>
+          <div class="modal-body">
+            <div v-if="stockControl.error" class="alert alert-danger" role="alert">
+              {{ stockControl.error }}
+            </div>
+            <div v-if="stockControl.success" class="alert alert-success" role="alert">
+              {{ stockControl.success }}
+            </div>
+            <div v-if="stockControl.loading" class="d-flex justify-content-center my-4">
+              <div class="spinner-border" role="status" aria-hidden="true"></div>
+            </div>
+            <div v-else-if="stockControl.detalle" class="row g-4">
+              <div class="col-12 col-lg-5">
+                <section class="border rounded-3 p-3 h-100">
+                  <h6 class="mb-3">Resumen de stock</h6>
+                  <p class="fs-4 fw-semibold mb-1">{{ formatStock(stockControlStockTotal) }}</p>
+                  <p class="text-muted small mb-3">Stock total disponible</p>
+                  <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                      <thead>
+                        <tr>
+                          <th scope="col">Bodega</th>
+                          <th scope="col" class="text-end">Disponible</th>
+                          <th scope="col" class="text-end">Stock mínimo</th>
+                          <th scope="col" class="text-center">Alerta</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-if="!stockControlBodegas.length">
+                          <td colspan="4" class="text-center text-muted">Sin bodegas registradas.</td>
+                        </tr>
+                        <tr
+                          v-for="(detalle, index) in stockControlBodegas"
+                          :key="`${detalle.bodega ?? 'global'}-${index}`"
+                        >
+                          <td>{{ detalle.bodega || 'Global' }}</td>
+                          <td class="text-end">{{ formatStock(detalle.cantidad) }}</td>
+                          <td class="text-end">{{ formatStock(detalle.stockMin ?? undefined) }}</td>
+                          <td class="text-center">
+                            <span
+                              class="badge"
+                              :class="detalle.alertaBajoStock ? 'text-bg-warning' : 'text-bg-success'"
+                            >
+                              {{ detalle.alertaBajoStock ? 'Revisar' : 'OK' }}
+                            </span>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              </div>
+              <div class="col-12 col-lg-7">
+                <div class="d-grid gap-4">
+                  <section class="border rounded-3 p-3">
+                    <h6 class="mb-3">Actualizar stock disponible</h6>
+                    <form class="row g-3" @submit.prevent="enviarActualizacionStockGlobal">
+                      <div class="col-12 col-md-6">
+                        <label class="form-label" for="stockControlStock">Stock disponible</label>
+                        <input
+                          id="stockControlStock"
+                          v-model="stockControl.globalForm.stock"
+                          type="number"
+                          class="form-control"
+                          min="0"
+                          step="1"
+                          :disabled="stockControl.globalForm.submitting"
+                        />
+                      </div>
+                      <div class="col-12 col-md-6">
+                        <label class="form-label" for="stockControlBodega">Bodega (opcional)</label>
+                        <input
+                          id="stockControlBodega"
+                          v-model="stockControl.globalForm.bodega"
+                          type="text"
+                          class="form-control"
+                          placeholder="PRINCIPAL"
+                          :disabled="stockControl.globalForm.submitting"
+                        />
+                      </div>
+                      <div class="col-12">
+                        <label class="form-label" for="stockControlMotivo">Motivo (opcional)</label>
+                        <input
+                          id="stockControlMotivo"
+                          v-model="stockControl.globalForm.motivo"
+                          type="text"
+                          class="form-control"
+                          placeholder="Ajuste manual"
+                          :disabled="stockControl.globalForm.submitting"
+                        />
+                      </div>
+                      <div class="col-12 d-flex justify-content-end">
+                        <button
+                          type="submit"
+                          class="btn btn-primary"
+                          :disabled="stockControl.globalForm.submitting"
+                        >
+                          <span
+                            v-if="stockControl.globalForm.submitting"
+                            class="spinner-border spinner-border-sm me-2"
+                            role="status"
+                            aria-hidden="true"
+                          ></span>
+                          Guardar stock
+                        </button>
+                      </div>
+                    </form>
+                  </section>
+
+                  <section class="border rounded-3 p-3">
+                    <h6 class="mb-3">Configurar stock mínimo</h6>
+                    <form class="row g-3" @submit.prevent="enviarActualizacionStockMin">
+                      <div class="col-12 col-md-6">
+                        <label class="form-label" for="stockMinCantidad">Stock mínimo</label>
+                        <input
+                          id="stockMinCantidad"
+                          v-model="stockControl.minForm.stockMin"
+                          type="number"
+                          class="form-control"
+                          min="0"
+                          step="1"
+                          :disabled="stockControl.minForm.submitting"
+                        />
+                      </div>
+                      <div class="col-12 col-md-6">
+                        <label class="form-label" for="stockMinBodega">Bodega (opcional)</label>
+                        <input
+                          id="stockMinBodega"
+                          v-model="stockControl.minForm.bodega"
+                          type="text"
+                          class="form-control"
+                          placeholder="PRINCIPAL"
+                          :disabled="stockControl.minForm.submitting"
+                        />
+                      </div>
+                      <div class="col-12 d-flex justify-content-end">
+                        <button
+                          type="submit"
+                          class="btn btn-outline-primary"
+                          :disabled="stockControl.minForm.submitting"
+                        >
+                          <span
+                            v-if="stockControl.minForm.submitting"
+                            class="spinner-border spinner-border-sm me-2"
+                            role="status"
+                            aria-hidden="true"
+                          ></span>
+                          Guardar stock mínimo
+                        </button>
+                      </div>
+                    </form>
+                  </section>
+
+                  <section class="border rounded-3 p-3">
+                    <h6 class="mb-3">Registrar movimiento</h6>
+                    <form class="row g-3" @submit.prevent="registrarMovimientoInventario">
+                      <div class="col-12 col-md-6">
+                        <label class="form-label" for="movimientoTipo">Tipo de movimiento</label>
+                        <select
+                          id="movimientoTipo"
+                          v-model="stockControl.movimientoForm.tipo"
+                          class="form-select"
+                          :disabled="stockControl.movimientoForm.submitting"
+                        >
+                          <option value="entrada">Entrada</option>
+                          <option value="salida">Salida</option>
+                          <option value="ajuste">Ajuste</option>
+                        </select>
+                      </div>
+                      <div class="col-12 col-md-6" v-if="stockControl.movimientoForm.tipo !== 'ajuste'">
+                        <label class="form-label" for="movimientoCantidad">Cantidad</label>
+                        <input
+                          id="movimientoCantidad"
+                          v-model="stockControl.movimientoForm.cantidad"
+                          type="number"
+                          class="form-control"
+                          min="1"
+                          step="1"
+                          :disabled="stockControl.movimientoForm.submitting"
+                        />
+                      </div>
+                      <div class="col-12 col-md-6" v-else>
+                        <label class="form-label" for="movimientoDelta">Ajuste (puede ser negativo)</label>
+                        <input
+                          id="movimientoDelta"
+                          v-model="stockControl.movimientoForm.delta"
+                          type="number"
+                          class="form-control"
+                          step="1"
+                          :disabled="stockControl.movimientoForm.submitting"
+                        />
+                      </div>
+                      <div class="col-12 col-md-6">
+                        <label class="form-label" for="movimientoBodega">Bodega (opcional)</label>
+                        <input
+                          id="movimientoBodega"
+                          v-model="stockControl.movimientoForm.bodegaNombre"
+                          type="text"
+                          class="form-control"
+                          placeholder="PRINCIPAL"
+                          :disabled="stockControl.movimientoForm.submitting"
+                        />
+                      </div>
+                      <div class="col-12 col-md-6" v-if="stockControl.movimientoForm.tipo === 'salida'">
+                        <div class="form-check mt-4">
+                          <input
+                            id="movimientoPermitirNegativo"
+                            v-model="stockControl.movimientoForm.permitirNegativo"
+                            class="form-check-input"
+                            type="checkbox"
+                            :disabled="stockControl.movimientoForm.submitting"
+                          />
+                          <label class="form-check-label" for="movimientoPermitirNegativo">
+                            Permitir stock negativo
+                          </label>
+                        </div>
+                      </div>
+                      <div class="col-12 col-md-6">
+                        <label class="form-label" for="movimientoMotivo">Motivo (opcional)</label>
+                        <input
+                          id="movimientoMotivo"
+                          v-model="stockControl.movimientoForm.motivo"
+                          type="text"
+                          class="form-control"
+                          placeholder="Venta, reposición..."
+                          :disabled="stockControl.movimientoForm.submitting"
+                        />
+                      </div>
+                      <div class="col-12 col-md-6">
+                        <label class="form-label" for="movimientoRefTipo">Tipo de referencia (opcional)</label>
+                        <input
+                          id="movimientoRefTipo"
+                          v-model="stockControl.movimientoForm.refTipo"
+                          type="text"
+                          class="form-control"
+                          placeholder="COMPRA, VENTA..."
+                          :disabled="stockControl.movimientoForm.submitting"
+                        />
+                      </div>
+                      <div class="col-12 col-md-6">
+                        <label class="form-label" for="movimientoRefId">ID de referencia (opcional)</label>
+                        <input
+                          id="movimientoRefId"
+                          v-model="stockControl.movimientoForm.refId"
+                          type="text"
+                          class="form-control"
+                          placeholder="OC-123, ORD-1001..."
+                          :disabled="stockControl.movimientoForm.submitting"
+                        />
+                      </div>
+                      <div class="col-12 d-flex justify-content-end">
+                        <button
+                          type="submit"
+                          class="btn btn-outline-success"
+                          :disabled="stockControl.movimientoForm.submitting"
+                        >
+                          <span
+                            v-if="stockControl.movimientoForm.submitting"
+                            class="spinner-border spinner-border-sm me-2"
+                            role="status"
+                            aria-hidden="true"
+                          ></span>
+                          Registrar movimiento
+                        </button>
+                      </div>
+                    </form>
+                  </section>
+                </div>
+              </div>
+            </div>
+            <p v-else class="text-center text-muted my-4">
+              Aún no hay información de stock disponible para este producto.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div v-if="stockControl.visible" class="modal-backdrop fade show"></div>
   </section>
 </template>
 
