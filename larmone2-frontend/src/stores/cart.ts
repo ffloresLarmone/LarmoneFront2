@@ -11,7 +11,7 @@ import type { Carrito, CarritoItem } from '../types/api'
 
 export interface CartItemDisplay {
   id: string
-  productoId: string
+  id_producto: string
   cantidad: number
   precioUnitario: number
   nombre?: string
@@ -29,7 +29,7 @@ const mapToDisplayItem = (item: CarritoItem): CartItemDisplay => {
   const principal = obtenerImagenPrincipal(item.producto?.imagenes)
   return {
     id: item.id,
-    productoId: item.productoId,
+    id_producto: item.id_producto,
     cantidad: item.cantidad,
     precioUnitario: item.precioUnitario,
     nombre: item.producto?.nombre,
@@ -102,15 +102,15 @@ export const useCartStore = defineStore('cart', {
         this.loading = false
       }
     },
-    async addItem({ productoId, cantidad = 1 }: { productoId: string; cantidad?: number }) {
-      if (!productoId) {
+    async addItem({ id_producto, cantidad = 1 }: { id_producto: string; cantidad?: number }) {
+      if (!id_producto) {
         throw new Error('Se requiere un identificador de producto para agregar al carrito.')
       }
 
       this.loading = true
       this.error = null
       try {
-        await addCartItem({ productoId, cantidad })
+        await addCartItem({ id_producto, cantidad })
         await this.refreshCart()
       } catch (error) {
         this.cart = null
@@ -124,17 +124,17 @@ export const useCartStore = defineStore('cart', {
         this.loading = false
       }
     },
-    async updateItemQuantity(productoId: string, cantidad: number) {
-      if (!productoId) return
+    async updateItemQuantity(id_producto: string, cantidad: number) {
+      if (!id_producto) return
       if (cantidad <= 0) {
-        await this.removeItem(productoId)
+        await this.removeItem(id_producto)
         return
       }
 
       this.loading = true
       this.error = null
       try {
-        await updateCartItemRequest({ productoId, cantidad })
+        await updateCartItemRequest({ id_producto, cantidad })
         await this.refreshCart()
       } catch (error) {
         this.cart = null
@@ -147,24 +147,24 @@ export const useCartStore = defineStore('cart', {
         this.loading = false
       }
     },
-    async incrementItem(productoId: string) {
-      const current = this.cart?.items.find((item) => item.productoId === productoId)
+    async incrementItem(id_producto: string) {
+      const current = this.cart?.items.find((item) => item.id_producto === id_producto)
       const nextCantidad = (current?.cantidad ?? 0) + 1
-      await this.updateItemQuantity(productoId, nextCantidad)
+      await this.updateItemQuantity(id_producto, nextCantidad)
     },
-    async decrementItem(productoId: string) {
-      const current = this.cart?.items.find((item) => item.productoId === productoId)
+    async decrementItem(id_producto: string) {
+      const current = this.cart?.items.find((item) => item.id_producto === id_producto)
       if (!current) return
       const nextCantidad = current.cantidad - 1
-      await this.updateItemQuantity(productoId, nextCantidad)
+      await this.updateItemQuantity(id_producto, nextCantidad)
     },
-    async removeItem(productoId: string) {
-      if (!productoId) return
+    async removeItem(id_producto: string) {
+      if (!id_producto) return
 
       this.loading = true
       this.error = null
       try {
-        await removeCartItemRequest(productoId)
+        await removeCartItemRequest(id_producto)
         await this.refreshCart()
       } catch (error) {
         this.cart = null

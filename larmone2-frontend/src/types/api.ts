@@ -72,7 +72,7 @@ export interface Producto {
 }
 
 export interface ProductoStockDetalle {
-  productoId: string
+  id_producto: string
   bodega?: string | null
   cantidad: number
   stockMin?: number | null
@@ -80,7 +80,7 @@ export interface ProductoStockDetalle {
 }
 
 export interface ProductoStockGlobal {
-  productoId: string
+  id_producto: string
   stockTotal: number
   porBodega: ProductoStockDetalle[]
 }
@@ -97,7 +97,7 @@ export interface ActualizarStockPayload {
 }
 
 export interface RegistrarEntradaInventarioPayload {
-  productoId: string
+  id_producto: string
   cantidad: number
   bodegaNombre?: string | null
   motivo?: string | null
@@ -106,7 +106,7 @@ export interface RegistrarEntradaInventarioPayload {
 }
 
 export interface RegistrarSalidaInventarioPayload {
-  productoId: string
+  id_producto: string
   cantidad: number
   bodegaNombre?: string | null
   motivo?: string | null
@@ -116,7 +116,7 @@ export interface RegistrarSalidaInventarioPayload {
 }
 
 export interface RegistrarAjusteInventarioPayload {
-  productoId: string
+  id_producto: string
   delta: number
   bodegaNombre?: string | null
   motivo?: string | null
@@ -176,7 +176,7 @@ export interface CarritoProductoResumen {
 
 export interface CarritoItem {
   id: string
-  productoId: string
+  id_producto: string
   cantidad: number
   precioUnitario: number
   subtotal: number
@@ -197,18 +197,18 @@ export interface Carrito {
 }
 
 export interface AddCartItemPayload {
-  productoId: string
-  cantidad?: number
+  id_producto: string
+  cantidad: number
 }
 
 export interface UpdateCartItemPayload {
-  productoId: string
+  id_producto: string
   cantidad: number
 }
 
 export interface VentaItemDetalle {
   id: string
-  productoId: string
+  id_producto: string
   sku?: string
   nombre?: string
   slug?: string
