@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { setAuthToken } from '../services/apiClient'
 
 interface UserProfile {
   id?: string
@@ -13,28 +14,36 @@ interface UserProfile {
 interface AuthState {
   isAuthenticated: boolean
   user: UserProfile | null
+  token: string | null
 }
 
 const STORAGE_KEY = 'larmone-auth'
 
 const loadStoredState = (): AuthState => {
+  const defaultState: AuthState = { isAuthenticated: false, user: null, token: null }
+
   if (typeof window === 'undefined') {
-    return { isAuthenticated: false, user: null }
+    return defaultState
   }
 
   const raw = window.localStorage.getItem(STORAGE_KEY)
   if (!raw) {
-    return { isAuthenticated: false, user: null }
+    return defaultState
   }
 
   try {
     const parsed = JSON.parse(raw) as Partial<AuthState>
     if (!parsed || typeof parsed !== 'object') {
-      return { isAuthenticated: false, user: null }
+      return defaultState
     }
 
-    return {
-      isAuthenticated: Boolean(parsed.isAuthenticated),
+    const token =
+      typeof parsed.token === 'string' && parsed.token.trim().length > 0
+        ? parsed.token.trim()
+        : null
+
+    const state: AuthState = {
+      isAuthenticated: Boolean(parsed.isAuthenticated && token),
       user:
         parsed.user && typeof parsed.user === 'object' && parsed.user !== null
           ? (() => {
@@ -91,10 +100,20 @@ const loadStoredState = (): AuthState => {
               }
             })()
           : null,
+      token,
     }
+
+    if (!state.token) {
+      state.user = null
+      state.isAuthenticated = false
+    }
+
+    setAuthToken(state.token)
+
+    return state
   } catch (error) {
     console.warn('No fue posible recuperar la sesión almacenada', error)
-    return { isAuthenticated: false, user: null }
+    return defaultState
   }
 }
 
@@ -134,14 +153,19 @@ export const useAuthStore = defineStore('auth', {
     },
   },
   actions: {
-    login(user: UserProfile) {
-      this.isAuthenticated = true
-      this.user = user
+    login(user: UserProfile, token?: string | null) {
+      const resolvedToken = token ?? null
+      this.user = resolvedToken ? user : null
+      this.token = resolvedToken
+      this.isAuthenticated = Boolean(this.user && resolvedToken)
+      setAuthToken(this.token)
       persistState(this.$state)
     },
     logout() {
       this.isAuthenticated = false
       this.user = null
+      this.token = null
+      setAuthToken(null)
       persistState(this.$state)
     },
     hasAdminAccess(candidate?: Pick<UserProfile, 'role' | 'roles'> | null) {

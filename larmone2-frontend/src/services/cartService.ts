@@ -11,9 +11,17 @@ export async function getCart(): Promise<Carrito> {
 }
 
 export async function addCartItem(payload: AddCartItemPayload): Promise<CarritoItem> {
+  const body: Record<string, unknown> = {
+    productoId: payload.productoId,
+  }
+
+  if (typeof payload.cantidad === 'number') {
+    body.cantidad = payload.cantidad
+  }
+
   return request<CarritoItem>('/carrito', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   })
 }
 
@@ -34,4 +42,8 @@ export async function clearCart(): Promise<{ vaciado: boolean }> {
   return request<{ vaciado: boolean }>('/carrito', {
     method: 'DELETE',
   })
+}
+
+export async function getCartTotal(): Promise<{ total: number }> {
+  return request<{ total: number }>('/carrito/total')
 }

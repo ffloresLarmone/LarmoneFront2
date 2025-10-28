@@ -25,6 +25,11 @@ export interface LoginPayload {
   telefono?: string
 }
 
+export interface AuthResult {
+  user: UserResponse | null
+  token: string | null
+}
+
 const extractUser = (payload: unknown): UserResponse | null => {
   if (!payload || typeof payload !== 'object') {
     return null
@@ -92,7 +97,52 @@ const extractUser = (payload: unknown): UserResponse | null => {
   }
 }
 
-export const registerUser = async (payload: RegisterUserPayload): Promise<UserResponse | null> => {
+const TOKEN_KEYS = ['token', 'accessToken', 'access_token', 'jwt', 'jwtToken']
+
+const extractToken = (payload: unknown): string | null => {
+  if (!payload) {
+    return null
+  }
+
+  if (typeof payload === 'string' && payload.trim().length > 0) {
+    return payload.trim()
+  }
+
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const token = extractToken(item)
+      if (token) {
+        return token
+      }
+    }
+    return null
+  }
+
+  if (typeof payload === 'object') {
+    const record = payload as Record<string, unknown>
+
+    for (const key of TOKEN_KEYS) {
+      const candidate = record[key]
+      if (typeof candidate === 'string' && candidate.trim().length > 0) {
+        return candidate.trim()
+      }
+    }
+
+    const nestedKeys = ['data', 'result', 'response', 'user']
+    for (const key of nestedKeys) {
+      if (key in record) {
+        const token = extractToken(record[key])
+        if (token) {
+          return token
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+export const registerUser = async (payload: RegisterUserPayload): Promise<AuthResult> => {
   const nombre = `${payload.firstName ?? ''} ${payload.lastName ?? ''}`.trim() || payload.firstName || payload.lastName || ''
   const response = await request<unknown>('/usuarios', {
     method: 'POST',
@@ -104,10 +154,13 @@ export const registerUser = async (payload: RegisterUserPayload): Promise<UserRe
     }),
   })
 
-  return extractUser(response)
+  return {
+    user: extractUser(response),
+    token: extractToken(response),
+  }
 }
 
-export const authenticateUser = async (payload: LoginPayload): Promise<UserResponse | null> => {
+export const authenticateUser = async (payload: LoginPayload): Promise<AuthResult> => {
   const response = await request<unknown>('/auth/login', {
     method: 'POST',
     body: JSON.stringify({
@@ -118,5 +171,8 @@ export const authenticateUser = async (payload: LoginPayload): Promise<UserRespo
     }),
   })
 
-  return extractUser(response)
+  return {
+    user: extractUser(response),
+    token: extractToken(response),
+  }
 }
