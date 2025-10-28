@@ -65,6 +65,22 @@ watch(
   },
 )
 
+watch(
+  () => cartStore.error,
+  (message) => {
+    if (!message || !cartStore.isDrawerOpen) {
+      return
+    }
+
+    toastManager.showToast({
+      title: 'No pudimos actualizar tu carrito',
+      message,
+      variant: 'danger',
+      duration: 4200,
+    })
+  },
+)
+
 const handleSearch = (query: string) => {
   if (!query) {
     toastManager.showToast({
