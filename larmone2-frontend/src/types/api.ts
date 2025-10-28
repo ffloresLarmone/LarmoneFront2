@@ -197,8 +197,8 @@ export interface Carrito {
 }
 
 export interface AddCartItemPayload {
-  id_producto: string
-  cantidad: number
+  productoId: string
+  cantidad?: number
 }
 
 export interface UpdateCartItemPayload {
