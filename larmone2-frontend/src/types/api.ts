@@ -71,6 +71,57 @@ export interface Producto {
   ratingResumen?: ProductoRatingResumen
 }
 
+export interface ProductoStockDetalle {
+  productoId: string
+  bodega?: string | null
+  cantidad: number
+  stockMin?: number | null
+  alertaBajoStock?: boolean
+}
+
+export interface ProductoStockGlobal {
+  productoId: string
+  stockTotal: number
+  porBodega: ProductoStockDetalle[]
+}
+
+export interface ActualizarStockMinPayload {
+  bodega?: string | null
+  stockMin: number
+}
+
+export interface ActualizarStockPayload {
+  stock: number
+  bodega?: string | null
+  motivo?: string | null
+}
+
+export interface RegistrarEntradaInventarioPayload {
+  productoId: string
+  cantidad: number
+  bodegaNombre?: string | null
+  motivo?: string | null
+  refTipo?: string | null
+  refId?: string | null
+}
+
+export interface RegistrarSalidaInventarioPayload {
+  productoId: string
+  cantidad: number
+  bodegaNombre?: string | null
+  motivo?: string | null
+  refTipo?: string | null
+  refId?: string | null
+  permitirNegativo?: boolean
+}
+
+export interface RegistrarAjusteInventarioPayload {
+  productoId: string
+  delta: number
+  bodegaNombre?: string | null
+  motivo?: string | null
+}
+
 export interface CrearMarcaPayload {
   nombre: string
   slug: string

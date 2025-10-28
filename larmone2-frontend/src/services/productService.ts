@@ -1,10 +1,17 @@
 import { request, withAdminRole } from './apiClient'
 import type {
   ActualizarProductoPayload,
+  ActualizarStockMinPayload,
+  ActualizarStockPayload,
   CrearProductoPayload,
   ImagenProducto,
   PagedResponse,
   Producto,
+  ProductoStockDetalle,
+  ProductoStockGlobal,
+  RegistrarAjusteInventarioPayload,
+  RegistrarEntradaInventarioPayload,
+  RegistrarSalidaInventarioPayload,
 } from '../types/api'
 
 export interface FetchProductsParams {
@@ -189,61 +196,110 @@ export async function updateProduct(
   return normalizeProducto(respuesta)
 }
 
-type UpdateProductStockResponse =
-  | ProductoResponse
-  | { producto: ProductoResponse }
-  | { stock: number; stockTotal?: number }
-  | undefined
-
-const resolveProductoFromStockResponse = (
-  productoId: string,
-  stockSolicitado: number,
-  respuesta: UpdateProductStockResponse,
-): Producto => {
-  if (respuesta && typeof respuesta === 'object' && 'producto' in respuesta) {
-    const producto = (respuesta as { producto: ProductoResponse }).producto
-    if (producto) {
-      return normalizeProducto(producto)
-    }
-  }
-
-  if (respuesta && typeof respuesta === 'object') {
-    const producto = respuesta as ProductoResponse
-    const normalizado = normalizeProducto(producto)
-    if (normalizado.id) {
-      return normalizado
-    }
-  }
-
-  const stockTotal =
-    respuesta && typeof respuesta === 'object'
-      ? (respuesta as { stockTotal?: number }).stockTotal ??
-        (respuesta as { stock?: number }).stock
-      : undefined
-
-  return normalizeProducto({
-    id: productoId,
-    stockTotal: typeof stockTotal === 'number' ? stockTotal : stockSolicitado,
-  } as ProductoResponse)
-}
-
 export async function updateProductStock(
   id: string,
-  stock: number,
+  payload: ActualizarStockPayload,
   options?: { admin?: boolean },
-): Promise<Producto> {
-  const respuesta = await request<UpdateProductStockResponse>(
+): Promise<ProductoStockDetalle | ProductoStockGlobal | undefined> {
+  return request<ProductoStockDetalle | ProductoStockGlobal | undefined>(
     `/inventario/stock/${encodeURIComponent(id)}`,
     applyAdminRole(
       {
         method: 'PATCH',
-        body: JSON.stringify({ stock }),
+        body: JSON.stringify(payload),
       },
       options?.admin ?? true,
     ),
   )
+}
 
-  return resolveProductoFromStockResponse(id, stock, respuesta)
+export async function fetchProductStock(
+  id: string,
+  params?: { bodega?: string },
+  options?: { admin?: boolean },
+): Promise<ProductoStockDetalle> {
+  const query = params?.bodega
+    ? `?bodega=${encodeURIComponent(params.bodega.trim())}`
+    : ''
+  return request<ProductoStockDetalle>(
+    `/inventario/stock/${encodeURIComponent(id)}${query}`,
+    applyAdminRole(undefined, options?.admin ?? true),
+  )
+}
+
+export async function fetchProductStockGlobal(
+  id: string,
+  options?: { admin?: boolean },
+): Promise<ProductoStockGlobal> {
+  return request<ProductoStockGlobal>(
+    `/inventario/stock/${encodeURIComponent(id)}/global`,
+    applyAdminRole(undefined, options?.admin ?? true),
+  )
+}
+
+export async function updateProductStockMin(
+  id: string,
+  payload: ActualizarStockMinPayload,
+  options?: { admin?: boolean },
+): Promise<ProductoStockDetalle | undefined> {
+  return request<ProductoStockDetalle | undefined>(
+    `/inventario/stock/${encodeURIComponent(id)}/min`,
+    applyAdminRole(
+      {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      },
+      options?.admin ?? true,
+    ),
+  )
+}
+
+export async function registrarEntradaInventario(
+  payload: RegistrarEntradaInventarioPayload,
+  options?: { admin?: boolean },
+): Promise<unknown> {
+  return request<unknown>(
+    '/inventario/entrada',
+    applyAdminRole(
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      options?.admin ?? true,
+    ),
+  )
+}
+
+export async function registrarSalidaInventario(
+  payload: RegistrarSalidaInventarioPayload,
+  options?: { admin?: boolean },
+): Promise<unknown> {
+  return request<unknown>(
+    '/inventario/salida',
+    applyAdminRole(
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      options?.admin ?? true,
+    ),
+  )
+}
+
+export async function registrarAjusteInventario(
+  payload: RegistrarAjusteInventarioPayload,
+  options?: { admin?: boolean },
+): Promise<unknown> {
+  return request<unknown>(
+    '/inventario/ajuste',
+    applyAdminRole(
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      options?.admin ?? true,
+    ),
+  )
 }
 
 export async function deactivateProduct(
