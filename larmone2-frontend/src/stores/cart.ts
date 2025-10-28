@@ -102,15 +102,15 @@ export const useCartStore = defineStore('cart', {
         this.loading = false
       }
     },
-    async addItem({ id_producto, cantidad = 1 }: { id_producto: string; cantidad?: number }) {
-      if (!id_producto) {
+    async addItem({ productoId, cantidad = 1 }: { productoId: string; cantidad?: number }) {
+      if (!productoId) {
         throw new Error('Se requiere un identificador de producto para agregar al carrito.')
       }
 
       this.loading = true
       this.error = null
       try {
-        await addCartItem({ id_producto, cantidad })
+        await addCartItem({ productoId, cantidad })
         await this.refreshCart()
       } catch (error) {
         this.cart = null
