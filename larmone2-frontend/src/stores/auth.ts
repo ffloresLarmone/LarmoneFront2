@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { setAuthToken } from '../services/apiClient'
+import { loadAuthTokenFromStorage } from '../services/tokenStorage'
 
 interface UserProfile {
   id?: string
@@ -19,6 +20,15 @@ interface AuthState {
 
 const STORAGE_KEY = 'larmone-auth'
 
+const sanitizeToken = (candidate: unknown): string | null => {
+  if (typeof candidate !== 'string') {
+    return null
+  }
+
+  const trimmed = candidate.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
 const loadStoredState = (): AuthState => {
   const defaultState: AuthState = { isAuthenticated: false, user: null, token: null }
 
@@ -37,13 +47,12 @@ const loadStoredState = (): AuthState => {
       return defaultState
     }
 
-    const token =
-      typeof parsed.token === 'string' && parsed.token.trim().length > 0
-        ? parsed.token.trim()
-        : null
+    const storedToken = sanitizeToken(parsed.token)
+    const fallbackToken = loadAuthTokenFromStorage()
+    const token = storedToken ?? fallbackToken
 
     const state: AuthState = {
-      isAuthenticated: Boolean(parsed.isAuthenticated && token),
+      isAuthenticated: Boolean(token),
       user:
         parsed.user && typeof parsed.user === 'object' && parsed.user !== null
           ? (() => {
@@ -154,10 +163,10 @@ export const useAuthStore = defineStore('auth', {
   },
   actions: {
     login(user: UserProfile, token?: string | null) {
-      const resolvedToken = token ?? null
-      this.user = resolvedToken ? user : null
+      const resolvedToken = sanitizeToken(token)
+      this.user = user ?? null
       this.token = resolvedToken
-      this.isAuthenticated = Boolean(this.user && resolvedToken)
+      this.isAuthenticated = Boolean(this.token)
       setAuthToken(this.token)
       persistState(this.$state)
     },
