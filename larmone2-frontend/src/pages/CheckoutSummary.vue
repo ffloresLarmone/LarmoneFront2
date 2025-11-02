@@ -7,6 +7,7 @@ import { useCartStore } from '../stores/cart'
 import { useCheckoutStore, type PurchaseMode } from '../stores/checkout'
 import { useAuthStore } from '../stores/auth'
 import { createVenta } from '../services/salesService'
+import type { CrearVentaItemPayload, CrearVentaPayload } from '../types/api'
 
 const router = useRouter()
 const cartStore = useCartStore()
@@ -43,6 +44,74 @@ watch(
   }
 )
 
+const resolveUserId = (): number | string => {
+  if (authStore.isAuthenticated) {
+    const rawId = authStore.user?.id
+
+    if (typeof rawId === 'number' && Number.isFinite(rawId)) {
+      return rawId
+    }
+
+    if (typeof rawId === 'string') {
+      const trimmed = rawId.trim()
+      if (trimmed.length > 0) {
+        const numericId = Number(trimmed)
+        return Number.isFinite(numericId) ? numericId : trimmed
+      }
+    }
+  }
+
+  return 0
+}
+
+const buildSalePayload = (): CrearVentaPayload => {
+  const cartItems = cartStore.cart?.items ?? []
+
+  const items = cartItems
+    .map((item) => {
+      const productoId =
+        typeof item.id_producto === 'string' && item.id_producto.trim().length > 0
+          ? item.id_producto.trim()
+          : typeof item.producto?.id === 'string'
+            ? item.producto.id.trim()
+            : ''
+
+      if (!productoId) {
+        return null
+      }
+
+      const cantidad =
+        typeof item.cantidad === 'number' && Number.isFinite(item.cantidad)
+          ? item.cantidad
+          : Number(item.cantidad)
+
+      if (!Number.isFinite(cantidad) || cantidad <= 0) {
+        return null
+      }
+
+      const precioUnitario =
+        typeof item.precioUnitario === 'number' && Number.isFinite(item.precioUnitario)
+          ? item.precioUnitario
+          : Number(item.precioUnitario)
+
+      if (!Number.isFinite(precioUnitario) || precioUnitario < 0) {
+        return null
+      }
+
+      return {
+        productoId,
+        cantidad: Math.round(cantidad),
+        precioUnitario: Math.round(precioUnitario),
+      }
+    })
+    .filter((item): item is CrearVentaItemPayload => item !== null)
+
+  return {
+    usuarioId: resolveUserId(),
+    items,
+  }
+}
+
 const goToShipping = async () => {
   if (!purchaseMode.value) {
     errorMessage.value = 'Selecciona cómo quieres comprar antes de continuar.'
@@ -55,17 +124,7 @@ const goToShipping = async () => {
     return
   }
 
-  const resolvedUserId =
-    authStore.isAuthenticated && authStore.user?.id ? authStore.user.id : 0
-
-  const payload = {
-    usuarioId: resolvedUserId,
-    items: cartItems.map((item) => ({
-      productoId: item.id_producto,
-      cantidad: item.cantidad,
-      precioUnitario: item.precioUnitario,
-    })),
-  }
+  const payload = buildSalePayload()
 
   if (payload.items.length === 0) {
     errorMessage.value = 'Tu carrito está vacío. Agrega productos para continuar.'
@@ -212,7 +271,11 @@ onMounted(() => {
                   <div v-if="errorMessage" class="alert alert-warning mb-0">{{ errorMessage }}</div>
 
                   <AppButton
-                    :label="isCreatingSale ? 'Creando pedido...' : 'Continuar al envío'"
+                    :label="
+                      isCreatingSale
+                        ? 'Procesando pedido...'
+                        : 'Procesar y continuar con el envío'
+                    "
                     size="lg"
                     :disabled="isCreatingSale"
                     @click="goToShipping"
