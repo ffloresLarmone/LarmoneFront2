@@ -267,6 +267,17 @@ export interface CancelarVentaPayload {
   motivo?: string
 }
 
+export interface CrearVentaItemPayload {
+  productoId: string
+  cantidad: number
+  precioUnitario: number
+}
+
+export interface CrearVentaPayload {
+  usuarioId: string | number
+  items: CrearVentaItemPayload[]
+}
+
 export interface ActualizarEnvioEstadoPayload {
   estado: string
   detalle?: string | null

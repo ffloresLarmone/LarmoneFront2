@@ -99,6 +99,11 @@ onMounted(() => {
 
   if (!checkoutStore.isReadyForShipping) {
     router.replace({ name: 'checkout-summary' })
+    return
+  }
+
+  if (!checkoutStore.hasSale) {
+    router.replace({ name: 'checkout-summary' })
   }
 })
 </script>
