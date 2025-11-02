@@ -6,10 +6,20 @@ import { regions } from '../data/locations'
 import { shippingOptions } from '../data/shippingOptions'
 import { useCheckoutStore } from '../stores/checkout'
 import { useCartStore } from '../stores/cart'
+import { useAuthStore } from '../stores/auth'
+
+const REQUIRED_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const router = useRouter()
 const checkoutStore = useCheckoutStore()
 const cartStore = useCartStore()
+const authStore = useAuthStore()
+
+const customerFormState = reactive({
+  firstName: checkoutStore.customerInfo?.firstName ?? '',
+  lastName: checkoutStore.customerInfo?.lastName ?? '',
+  email: checkoutStore.customerInfo?.email ?? '',
+})
 
 const selectedRegionId = ref(checkoutStore.shippingAddress?.regionId ?? '')
 const selectedCityId = ref(checkoutStore.shippingAddress?.cityId ?? '')
@@ -25,6 +35,21 @@ const formState = reactive({
 
 const errorMessage = ref('')
 
+const isCustomerFormLocked = computed(() => authStore.isAuthenticated)
+
+const isCustomerFormValid = computed(() => {
+  const trimmedFirstName = customerFormState.firstName.trim()
+  const trimmedLastName = customerFormState.lastName.trim()
+  const trimmedEmail = customerFormState.email.trim()
+
+  return (
+    trimmedFirstName.length > 0 &&
+    trimmedLastName.length > 0 &&
+    trimmedEmail.length > 0 &&
+    REQUIRED_EMAIL_PATTERN.test(trimmedEmail)
+  )
+})
+
 const availableCities = computed(() => {
   const region = regions.find((item) => item.id === selectedRegionId.value)
   return region?.cities ?? []
@@ -37,6 +62,7 @@ const availableCommunes = computed(() => {
 
 const isFormValid = computed(() => {
   return (
+    isCustomerFormValid.value &&
     Boolean(selectedRegionId.value) &&
     Boolean(selectedCityId.value) &&
     Boolean(selectedCommuneId.value) &&
@@ -45,6 +71,35 @@ const isFormValid = computed(() => {
     Boolean(selectedShippingOption.value)
   )
 })
+
+const applyCustomerInfo = (firstName: string, lastName: string, email: string) => {
+  customerFormState.firstName = firstName
+  customerFormState.lastName = lastName
+  customerFormState.email = email
+}
+
+const resolveAuthenticatedCustomerInfo = () => {
+  const firstName = authStore.user?.firstName?.trim() ?? ''
+  const lastName = authStore.user?.lastName?.trim() ?? ''
+  const email = authStore.user?.email?.trim() ?? ''
+
+  applyCustomerInfo(firstName, lastName, email)
+}
+
+const hydrateCustomerForm = () => {
+  if (authStore.isAuthenticated) {
+    resolveAuthenticatedCustomerInfo()
+    return
+  }
+
+  if (checkoutStore.customerInfo) {
+    applyCustomerInfo(
+      checkoutStore.customerInfo.firstName,
+      checkoutStore.customerInfo.lastName,
+      checkoutStore.customerInfo.email
+    )
+  }
+}
 
 watch(selectedRegionId, () => {
   selectedCityId.value = ''
@@ -55,11 +110,42 @@ watch(selectedCityId, () => {
   selectedCommuneId.value = ''
 })
 
+watch(
+  () => authStore.user,
+  () => {
+    if (authStore.isAuthenticated) {
+      resolveAuthenticatedCustomerInfo()
+    }
+  }
+)
+
+watch(
+  () => checkoutStore.customerInfo,
+  (info) => {
+    if (!authStore.isAuthenticated && info) {
+      applyCustomerInfo(info.firstName, info.lastName, info.email)
+    }
+  }
+)
+
 const handleSubmit = () => {
   if (!isFormValid.value) {
+    if (!isCustomerFormValid.value) {
+      errorMessage.value = 'Ingresa los datos del cliente para continuar con el envío.'
+      return
+    }
+
     errorMessage.value = 'Completa todos los campos obligatorios para continuar.'
     return
   }
+
+  const trimmedCustomerInfo = {
+    firstName: customerFormState.firstName.trim(),
+    lastName: customerFormState.lastName.trim(),
+    email: customerFormState.email.trim(),
+  }
+
+  checkoutStore.setCustomerInfo(trimmedCustomerInfo)
 
   const region = regions.find((item) => item.id === selectedRegionId.value)
   const city = availableCities.value.find((item) => item.id === selectedCityId.value)
@@ -105,6 +191,8 @@ onMounted(() => {
   if (!checkoutStore.hasSale) {
     router.replace({ name: 'checkout-summary' })
   }
+
+  hydrateCustomerForm()
 })
 </script>
 
@@ -122,6 +210,46 @@ onMounted(() => {
             <div class="col-12 col-lg-7">
               <div class="card border-0 shadow-sm rounded-4">
                 <div class="card-body p-4">
+                  <h2 class="h5 fw-bold mb-4">Datos del cliente</h2>
+                  <div class="row g-3 mb-4">
+                    <div class="col-12 col-md-6">
+                      <label for="customer-first-name" class="form-label fw-semibold">Nombre</label>
+                      <input
+                        id="customer-first-name"
+                        v-model="customerFormState.firstName"
+                        type="text"
+                        class="form-control form-control-lg"
+                        placeholder="Ej: María"
+                        :disabled="isCustomerFormLocked"
+                        required
+                      />
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label for="customer-last-name" class="form-label fw-semibold">Apellidos</label>
+                      <input
+                        id="customer-last-name"
+                        v-model="customerFormState.lastName"
+                        type="text"
+                        class="form-control form-control-lg"
+                        placeholder="Ej: González Pérez"
+                        :disabled="isCustomerFormLocked"
+                        required
+                      />
+                    </div>
+                    <div class="col-12">
+                      <label for="customer-email" class="form-label fw-semibold">Correo electrónico</label>
+                      <input
+                        id="customer-email"
+                        v-model="customerFormState.email"
+                        type="email"
+                        class="form-control form-control-lg"
+                        placeholder="ejemplo@correo.com"
+                        :disabled="isCustomerFormLocked"
+                        required
+                      />
+                    </div>
+                  </div>
+
                   <h2 class="h5 fw-bold mb-4">Dirección de despacho</h2>
                   <form class="row g-3" novalidate @submit.prevent="handleSubmit">
                     <div class="col-12 col-md-6">
