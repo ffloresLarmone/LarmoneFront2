@@ -2,6 +2,7 @@ import { request, withAdminRole } from './apiClient'
 import type {
   ActualizarEnvioEstadoPayload,
   CancelarVentaPayload,
+  CrearVentaPayload,
   PagedResponse,
   Venta,
   VentaEnvio,
@@ -40,6 +41,13 @@ const buildQueryString = (params: FetchVentasParams): string => {
 
   const queryString = query.toString()
   return queryString ? `?${queryString}` : ''
+}
+
+export async function createVenta(payload: CrearVentaPayload): Promise<Venta> {
+  return request<Venta>('/ventas', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
 }
 
 export async function fetchVentas(

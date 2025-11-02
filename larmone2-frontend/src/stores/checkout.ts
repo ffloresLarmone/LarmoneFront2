@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import type { Venta } from '../types/api'
 
 export type PurchaseMode = 'guest' | 'customer'
 
@@ -24,6 +25,7 @@ interface CheckoutState {
   shippingAddress: ShippingAddress | null
   shippingOptionId: ShippingOptionId | null
   paymentStatus: PaymentStatus
+  sale: Venta | null
 }
 
 const INITIAL_STATE: CheckoutState = {
@@ -31,6 +33,7 @@ const INITIAL_STATE: CheckoutState = {
   shippingAddress: null,
   shippingOptionId: null,
   paymentStatus: null,
+  sale: null,
 }
 
 export const useCheckoutStore = defineStore('checkout', {
@@ -42,6 +45,9 @@ export const useCheckoutStore = defineStore('checkout', {
     isReadyForPayment(state): boolean {
       return state.purchaseMode !== null && state.shippingAddress !== null && state.shippingOptionId !== null
     },
+    hasSale(state): boolean {
+      return state.sale !== null
+    },
   },
   actions: {
     setPurchaseMode(mode: PurchaseMode) {
@@ -50,6 +56,9 @@ export const useCheckoutStore = defineStore('checkout', {
     setShippingDetails(address: ShippingAddress, optionId: ShippingOptionId) {
       this.shippingAddress = address
       this.shippingOptionId = optionId
+    },
+    setSale(sale: Venta | null) {
+      this.sale = sale
     },
     resetShipping() {
       this.shippingAddress = null
@@ -73,6 +82,7 @@ export const useCheckoutStore = defineStore('checkout', {
       this.shippingAddress = null
       this.shippingOptionId = null
       this.paymentStatus = null
+      this.sale = null
     },
   },
 })

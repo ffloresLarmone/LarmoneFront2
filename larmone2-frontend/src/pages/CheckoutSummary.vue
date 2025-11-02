@@ -6,6 +6,7 @@ import AppButton from '../components/atoms/AppButton.vue'
 import { useCartStore } from '../stores/cart'
 import { useCheckoutStore, type PurchaseMode } from '../stores/checkout'
 import { useAuthStore } from '../stores/auth'
+import { createVenta } from '../services/salesService'
 
 const router = useRouter()
 const cartStore = useCartStore()
@@ -19,6 +20,7 @@ const purchaseMode = ref<PurchaseMode | null>(
   checkoutStore.purchaseMode ?? (authStore.isAuthenticated ? 'customer' : 'guest')
 )
 const errorMessage = ref('')
+const isCreatingSale = ref(false)
 
 const formattedTotal = computed(() =>
   new Intl.NumberFormat('es-CL', {
@@ -41,15 +43,53 @@ watch(
   }
 )
 
-const goToShipping = () => {
+const goToShipping = async () => {
   if (!purchaseMode.value) {
     errorMessage.value = 'Selecciona cómo quieres comprar antes de continuar.'
     return
   }
 
-  checkoutStore.setPurchaseMode(purchaseMode.value)
-  errorMessage.value = ''
-  router.push({ name: 'checkout-shipping' })
+  const cartItems = cartStore.cart?.items ?? []
+  if (cartItems.length === 0) {
+    errorMessage.value = 'Tu carrito está vacío. Agrega productos para continuar.'
+    return
+  }
+
+  const resolvedUserId =
+    authStore.isAuthenticated && authStore.user?.id ? authStore.user.id : 0
+
+  const payload = {
+    usuarioId: resolvedUserId,
+    items: cartItems.map((item) => ({
+      productoId: item.id_producto,
+      cantidad: item.cantidad,
+      precioUnitario: item.precioUnitario,
+    })),
+  }
+
+  if (payload.items.length === 0) {
+    errorMessage.value = 'Tu carrito está vacío. Agrega productos para continuar.'
+    return
+  }
+
+  isCreatingSale.value = true
+  checkoutStore.setSale(null)
+
+  try {
+    const venta = await createVenta(payload)
+    checkoutStore.setPurchaseMode(purchaseMode.value)
+    checkoutStore.setSale(venta)
+    errorMessage.value = ''
+    router.push({ name: 'checkout-shipping' })
+  } catch (error) {
+    if (error instanceof Error) {
+      errorMessage.value = error.message
+    } else {
+      errorMessage.value = 'No pudimos crear tu pedido. Inténtalo nuevamente.'
+    }
+  } finally {
+    isCreatingSale.value = false
+  }
 }
 
 onMounted(() => {
@@ -171,7 +211,12 @@ onMounted(() => {
 
                   <div v-if="errorMessage" class="alert alert-warning mb-0">{{ errorMessage }}</div>
 
-                  <AppButton label="Continuar al envío" size="lg" @click="goToShipping" />
+                  <AppButton
+                    :label="isCreatingSale ? 'Creando pedido...' : 'Continuar al envío'"
+                    size="lg"
+                    :disabled="isCreatingSale"
+                    @click="goToShipping"
+                  />
                   <p class="mb-0 text-muted small text-center">
                     Paso 1 de 3 · Luego podrás definir la dirección y el método de pago.
                   </p>
