@@ -7,6 +7,7 @@ import axios, {
   type Method,
 } from 'axios'
 import { reactive } from 'vue'
+import { loadAuthTokenFromStorage, persistAuthToken } from './tokenStorage'
 
 const DEFAULT_BASE_URL = 'http://localhost:3000/api'
 const GENERIC_ERROR_MESSAGE =
@@ -178,11 +179,29 @@ class ApiHttpClient {
 
 const client = new ApiHttpClient(getBaseUrl())
 
-let staticToken: string | null = null
-client.setTokenProvider(() => staticToken)
+let staticToken: string | null = loadAuthTokenFromStorage()
+client.setTokenProvider(() => {
+  if (staticToken) {
+    return staticToken
+  }
 
-export function setAuthToken(token: string | null) {
+  const storedToken = loadAuthTokenFromStorage()
+  staticToken = storedToken
+  return storedToken
+})
+
+interface SetAuthTokenOptions {
+  persist?: boolean
+}
+
+export function setAuthToken(token: string | null, options: SetAuthTokenOptions = {}) {
   staticToken = token
+
+  if (options.persist === false) {
+    return
+  }
+
+  persistAuthToken(token)
 }
 
 export function setTokenProvider(provider?: TokenProvider) {
