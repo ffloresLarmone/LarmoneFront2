@@ -213,7 +213,7 @@ export function setTokenProvider(provider?: TokenProvider) {
 }
 
 const ADMIN_ROLE_HEADER = 'X-User-Role'
-const ADMIN_ROLE_VALUE = 'ADMIN'
+const ADMIN_ROLE_VALUE = 'Admin'
 
 export function withAdminRole(options: RequestInit = {}): RequestInit {
   const headers = normalizeHeaders(options.headers)
