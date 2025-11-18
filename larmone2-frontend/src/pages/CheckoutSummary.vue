@@ -32,6 +32,7 @@ const formattedTotal = computed(() =>
 )
 
 const canShowGuestOption = computed(() => !authStore.isAuthenticated)
+const canShowCustomerOption = computed(() => !authStore.isAuthenticated)
 
 watch(
   () => authStore.isAuthenticated,
@@ -41,7 +42,8 @@ watch(
     } else if (!purchaseMode.value) {
       purchaseMode.value = 'guest'
     }
-  }
+  },
+  { immediate: true }
 )
 
 const resolveUserId = (): number | string => {
@@ -245,14 +247,16 @@ onMounted(() => {
                         </div>
                       </label>
 
-                      <label class="option-card border rounded-3 p-3 d-flex align-items-start gap-3">
+                      <label
+                        v-if="canShowCustomerOption"
+                        class="option-card border rounded-3 p-3 d-flex align-items-start gap-3"
+                      >
                         <input
                           v-model="purchaseMode"
                           class="form-check-input mt-1"
                           type="radio"
                           name="purchase-mode"
                           value="customer"
-                          :disabled="authStore.isAuthenticated"
                         />
                         <div>
                           <span class="fw-semibold d-block">Comprar como cliente registrado</span>
